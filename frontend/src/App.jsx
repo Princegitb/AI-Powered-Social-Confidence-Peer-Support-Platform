@@ -16,6 +16,9 @@ import ConfidenceGarden from './pages/ConfidenceGarden';
 import SpeechFeedback from './pages/SpeechFeedback';
 import FindSaathi from './pages/FindSaathi';
 import PeerChat from './pages/PeerChat';
+import Community from './pages/Community';
+import Journal from './pages/Journal';
+import Safety from './pages/Safety';
 import Challenges from './pages/Challenges';
 import NotFound from './pages/NotFound';
 
@@ -36,6 +39,7 @@ function AnimatedRoutes() {
         <Routes location={location}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/companion" element={<AICompanion />} />
+          <Route path="/sara" element={<AICompanion />} />
           <Route path="/practice" element={<RoleplaySelector />} />
           <Route path="/roleplay/:scenarioId" element={<RoleplaySession />} />
           <Route path="/progress" element={<Progress />} />
@@ -44,6 +48,9 @@ function AnimatedRoutes() {
           <Route path="/speech" element={<SpeechFeedback />} />
           <Route path="/peer" element={<FindSaathi />} />
           <Route path="/peer/chat/:saathiId" element={<PeerChat />} />
+          <Route path="/community" element={<Community />} />
+          <Route path="/journal" element={<Journal />} />
+          <Route path="/safety" element={<Safety />} />
           <Route path="/challenges" element={<Challenges />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

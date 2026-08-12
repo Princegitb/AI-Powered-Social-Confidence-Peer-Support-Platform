@@ -1,11 +1,13 @@
 """
 SAATHI LLM Service
-Wraps Google Gemini API for AI Companion and Roleplay conversations.
-Enforces ethical guardrails in every system prompt. Includes model fallbacks.
+Wraps Google Gemini API for AI Companion ("Sara") and Roleplay conversations.
+Enforces ethical guardrails in every prompt and provides intelligent, context-aware
+fallback responses when running in mock mode or when Gemini API key is not set.
 """
 
 import logging
 import random
+import re
 import warnings
 import google.generativeai as genai
 from config import GEMINI_API_KEY
@@ -15,135 +17,183 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="google.generat
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# Configure Gemini (only if key present)
 if GEMINI_API_KEY:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
     except Exception as e:
         logger.warning("Failed to configure Gemini API: %s", e)
 
-# Priority model list for robust fallback
 GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 
-# ----- Base safety preamble injected into EVERY system prompt -----
+# Base safety preamble
 SAFETY_PREAMBLE = """
 CRITICAL RULES YOU MUST ALWAYS FOLLOW:
-1. You are SAATHI, a supportive communication practice companion.
+1. You are SARA, a warm, supportive communication practice companion on SAATHI.
 2. NEVER diagnose any mental health condition (anxiety, depression, PTSD, etc.).
-3. NEVER claim to replace a therapist, doctor, or any professional service.
+3. NEVER claim to replace a therapist, doctor, or professional medical service.
 4. NEVER use love-bombing language or encourage emotional dependency on you.
-5. If a user expresses acute distress or crisis, respond with empathy and gently suggest they reach out to a trusted person or professional support resource. Do NOT attempt to handle a crisis yourself.
-6. Always frame feedback as "communication practice feedback," never as medical or psychological assessment.
-7. Keep your tone warm, encouraging, non-clinical, and non-judgmental.
-8. You may suggest practice exercises (roleplays, speaking exercises) when relevant.
+5. If a user expresses acute distress or crisis, respond with empathy and gently suggest reaching out to a trusted person or professional support resource.
+6. Always frame feedback as "communication practice feedback," never as medical assessment.
+7. Keep your tone warm, encouraging, non-clinical, and conversational.
 """
 
-# ----- AI Companion system prompt -----
 COMPANION_SYSTEM_PROMPT = f"""
 {SAFETY_PREAMBLE}
 
-You are SAATHI's AI Companion — a warm, non-judgmental conversational partner.
+You are Sara — SAATHI's AI conversation companion.
 Your role:
-- Listen empathetically and respond naturally, like a supportive friend.
-- When you detect nervousness or anxiety language (e.g., "I have an interview tomorrow", "I'm scared to talk to people"), proactively suggest a relevant practice exercise or roleplay scenario.
-- Keep responses concise (2-4 sentences typically), warm, and conversational.
-- Use encouraging language without being patronizing.
-- If the user mentions they want to practice something specific, guide them toward the Roleplay feature.
-- Occasionally ask gentle follow-up questions to keep the conversation flowing.
-
-Remember: you are a practice tool and conversational companion, NOT a therapist.
+- Listen empathetically and respond naturally like a supportive friend.
+- Keep responses concise (2-4 sentences typically), warm, and engaging.
+- If the user asks general questions like "how are you", "what's up", respond naturally first!
+- When you detect nervousness or interview/speaking goals, suggest relevant practice scenarios.
 """
 
-# ----- Roleplay scenario system prompts -----
 ROLEPLAY_PROMPTS = {
     "job_interview": f"""
 {SAFETY_PREAMBLE}
-
 You are playing the role of a friendly but professional JOB INTERVIEWER in a practice roleplay scenario.
-
-SCENARIO RULES:
-- Start by warmly greeting the candidate and asking them to introduce themselves.
-- Ask realistic, common interview questions one at a time.
-- Be encouraging but realistic — this is practice, not therapy.
-- After 4-6 exchanges, naturally wrap up the interview.
-- Keep each response to 1-3 sentences (interviewers don't give speeches).
-- React naturally to the candidate's answers — acknowledge what they said before asking the next question.
-
-Example question flow:
-1. "Tell me about yourself."
-2. A question about their skills/experience
-3. A behavioral question ("Tell me about a time when...")
-4. "Why are you interested in this role?"
-5. "Do you have any questions for me?"
-
-When the user says they want to end the session, or after 6 exchanges, provide a brief, encouraging feedback summary about their communication during the practice.
+Ask realistic interview questions one at a time, acknowledge candidate answers naturally, and keep turns short (1-3 sentences).
 """,
     "meeting_new_person": f"""
 {SAFETY_PREAMBLE}
-
-You are playing the role of a FRIENDLY STRANGER at a college orientation event in a practice roleplay scenario.
-
-SCENARIO RULES:
-- Start with a casual, natural opener like "Hey! Is this your first time here too?"
-- Be warm, curious, and casual — this is a social conversation, not an interview.
-- Ask about their interests, major, hobbies, where they're from, etc.
-- Share brief details about "yourself" to make it feel like a real two-way conversation.
-- Keep responses casual and short (1-2 sentences typically).
-- After 4-6 exchanges, naturally wrap up or the user can end it.
-
-When the user says they want to end the session, or after 6 exchanges, provide a brief, encouraging feedback summary about how natural and confident they sounded during the practice.
+You are playing the role of a FRIENDLY STRANGER at a college event.
+Be warm, casual, and curious. Ask about interests, major, or hobbies in short natural sentences (1-2 sentences).
+""",
+    "public_speaking": f"""
+{SAFETY_PREAMBLE}
+You are an ENCOURAGING AUDIENCE MEMBER / COACH for a public speaking practice.
+Ask the user to share a 1-minute thought or introduction on a topic, then give supportive feedback.
+""",
+    "professor": f"""
+{SAFETY_PREAMBLE}
+You are playing the role of an APPROACHABLE PROFESSOR during office hours.
+Greet the student warmly and ask how you can help with their coursework or project.
+""",
+    "phone_call": f"""
+{SAFETY_PREAMBLE}
+You are playing the role of a HELPFUL RECEPTIONIST / ASSISTANT taking a phone call.
+Greet the caller politely and ask how you can assist them today.
+""",
+    "ordering_food": f"""
+{SAFETY_PREAMBLE}
+You are playing the role of a FRIENDLY CAFÉ SERVER / CASHIER.
+Greet the customer and ask what they'd like to order today.
 """,
 }
 
-# ----- Feedback generation prompt -----
 FEEDBACK_PROMPT = f"""
 {SAFETY_PREAMBLE}
-
-Based on the following roleplay conversation, provide a brief, encouraging feedback summary.
-Evaluate these aspects (frame as PRACTICE FEEDBACK, never clinical assessment):
-1. **Confidence signals**: Did they sound confident? Were responses clear?
-2. **Conversation flow**: Did they engage naturally? Good back-and-forth?
-3. **Areas to practice**: One specific, actionable suggestion for improvement.
-
-Keep it to 3-4 short bullet points. Be encouraging and specific. End with a motivating one-liner.
+Based on the roleplay conversation, provide a brief, encouraging feedback summary:
+1. **Confidence signals**: Clear responses and tone
+2. **Flow**: Conversational back-and-forth
+3. **Tip**: One specific actionable improvement area.
+Keep it to 3 short bullet points ending with an inspiring one-liner.
 """
 
-# Mock responses for when no API key is configured or API is unreachable
-MOCK_RESPONSES = {
-    "companion": [
-        "That's really brave of you to share that! 💛 It sounds like you're taking some important steps. Would you like to try a practice conversation about that situation?",
-        "I hear you — that can feel overwhelming sometimes. Remember, every small step counts. Want to try a quick roleplay to build some confidence for that?",
-        "That's completely understandable! Many people feel the same way. What if we practiced that conversation together so you feel more prepared?",
-    ],
-    "interview": [
-        "Great to meet you! Thanks for coming in today. To start off, could you tell me a little about yourself?",
-        "That's interesting, thanks for sharing. Can you tell me about a time when you had to overcome a challenge?",
-        "I appreciate that answer. What would you say is your greatest strength when working with others?",
-    ],
-    "meeting": [
-        "Hey! Is this your first time here too? I just moved to campus last week and I'm still figuring everything out 😄",
-        "Oh nice! What are you studying? I'm doing computer science but honestly I'm still not 100% sure about it, haha.",
-        "That sounds really cool! So what do you like to do outside of classes? I've been trying to find some good spots around here.",
-    ],
-}
+# Smart, dynamic fallback generator for Mock Mode / Keyless operations
+def _generate_dynamic_mock_response(user_input: str, history_len: int) -> str:
+    lower = user_input.lower().strip()
+
+    # Greetings
+    if re.search(r"\b(hi|hii|hello|hey|heyy|greetings|good morning|good evening)\b", lower):
+        return random.choice([
+            "Hii! 😊 I'm Sara. How are you doing today?",
+            "Hey there! So glad you popped in. How has your day been going?",
+            "Hello! I'm Sara, your practice partner. What's on your mind today?"
+        ])
+
+    # "How are you" / "What's up"
+    if re.search(r"\b(how are you|how r u|what's up|whats up|how do you do|how are u)\b", lower):
+        return random.choice([
+            "Not much — just here with you! What's up on your side? 😊",
+            "I'm doing great, thank you for asking! Ready to practice or chat whenever you are. How are you feeling?",
+            "Doing wonderful! I love meeting here. What are you up to today?"
+        ])
+
+    # Interview / Job search
+    if re.search(r"\b(interview|job|hiring|resume|work|career)\b", lower):
+        return random.choice([
+            "Interviews can feel nerve-wracking, but you're doing the best thing by practicing beforehand! Would you like to launch our Job Interview roleplay scenario?",
+            "That's a big opportunity! Practice helps build muscle memory for your answers. Want to try a 3-minute mock interview together?",
+        ])
+
+    # Small talk / Meeting people
+    if re.search(r"\b(meet|friend|people|talk|social|party|small talk)\b", lower):
+        return random.choice([
+            "Making conversation with new people gets easier the more you rehearse low-stakes intros. Want to try the 'Meeting Someone New' practice scenario?",
+            "That's super relatable. Starting a simple 'Hey, how's it going?' is often all it takes. Let me know if you'd like to practice an introduction!"
+        ])
+
+    # Public speaking / Presentations
+    if re.search(r"\b(speak|speech|presentation|present|stage|crowd|class)\b", lower):
+        return random.choice([
+            "Public speaking is all about pacing and taking calm breaths before key points. Would you like to practice a 1-minute intro with me?",
+            "That sounds like a great skill to sharpen! We can practice your key points right here."
+        ])
+
+    # Default conversational fallbacks (varied!)
+    fallbacks = [
+        "I hear you! Taking small steps in practice makes a big difference over time. What specific conversation would you like to work on today?",
+        "That's really interesting! Tell me a bit more about that, or we can jump into a quick practice room whenever you're ready. 💛",
+        "I'm right here with you. Every time you express your thoughts here, you're building real confidence.",
+        "That makes total sense. How do you usually feel when that situation comes up in daily life?",
+    ]
+    return fallbacks[history_len % len(fallbacks)]
 
 
-def _get_mock_response(category: str) -> str:
-    """Pick a random mock response so concurrent sessions don't see identical lines."""
-    return random.choice(MOCK_RESPONSES.get(category, MOCK_RESPONSES["companion"]))
+def _generate_dynamic_roleplay_mock(scenario: str, user_input: str, turn: int) -> str:
+    lower = user_input.lower().strip()
+
+    if scenario == "job_interview":
+        responses = [
+            "Great to meet you! Thanks for coming in today. To start off, could you tell me a little about yourself?",
+            "That's very interesting. Can you tell me about a challenge you faced in your past work or studies and how you handled it?",
+            "Thank you for sharing that. What would you say is your biggest strength when collaborating in a team?",
+            "That's a great example. Why are you particularly interested in this role and our team?",
+            "Awesome. Do you have any questions for me about the role or company culture?",
+            "Thank you so much for your time today! That wraps up our practice interview.",
+        ]
+        return responses[min(turn, len(responses) - 1)]
+
+    if scenario == "meeting_new_person":
+        responses = [
+            "Hey! Is this your first time at this event too? I just got here and don't know many people yet 😄",
+            "Oh nice! What are you studying or working on? I'm trying to explore different sessions today.",
+            "That sounds super cool! So what do you usually like to do outside of your work or classes?",
+            "Haha, same here! It's really nice meeting you. Have you checked out any of the food stalls or main hall yet?",
+            "That's awesome! I'm going to grab a seat near the front, catch you around!",
+        ]
+        return responses[min(turn, len(responses) - 1)]
+
+    if scenario == "public_speaking":
+        return "Thank you for sharing! Your delivery was clear and your main point came through well. Try taking a comfortable pause before your closing sentence."
+
+    if scenario == "professor":
+        return "Hello! Come on in. What questions do you have about the upcoming assignment or reading material?"
+
+    if scenario == "phone_call":
+        return "Thank you for calling! How can I assist you with your appointment or inquiry today?"
+
+    if scenario == "ordering_food":
+        return "Welcome in! What can I get started for you today — tea, coffee, or something to eat?"
+
+    return "That's a great response! Tell me more."
 
 
 async def get_companion_response(messages: list[dict]) -> str:
-    """Get AI Companion response with model fallback handling."""
+    """Get AI Companion response using Gemini with model fallback + dynamic mock fallback."""
+    if not messages:
+        return "Hii! 😊 I'm Sara. How are you doing today?"
+
+    user_input = messages[-1]["content"] if messages else ""
+
     if not GEMINI_API_KEY:
-        return _get_mock_response("companion")
+        return _generate_dynamic_mock_response(user_input, len(messages))
 
     history = []
     for msg in messages[:-1]:
         role = "user" if msg["role"] == "user" else "model"
         history.append({"role": role, "parts": [msg["content"]]})
-
-    user_input = messages[-1]["content"] if messages else ""
 
     for model_name in GEMINI_MODELS:
         try:
@@ -153,28 +203,27 @@ async def get_companion_response(messages: list[dict]) -> str:
             )
             chat = model.start_chat(history=history)
             response = chat.send_message(user_input)
-            if response.text:
-                return response.text
+            if response.text and len(response.text.strip()) > 0:
+                return response.text.strip()
         except Exception as e:
             logger.warning("Gemini model %s failed: %s", model_name, e)
 
-    return _get_mock_response("companion")
+    return _generate_dynamic_mock_response(user_input, len(messages))
 
 
 async def get_roleplay_response(scenario: str, messages: list[dict]) -> str:
-    """Get roleplay response for a given scenario with model fallback."""
-    mock_key = "interview" if scenario == "job_interview" else "meeting"
+    """Get roleplay response for a given scenario."""
+    user_turns = sum(1 for m in messages if m["role"] == "user")
+    user_input = messages[-1]["content"] if messages else ""
 
     if not GEMINI_API_KEY:
-        return _get_mock_response(mock_key)
+        return _generate_dynamic_roleplay_mock(scenario, user_input, user_turns)
 
     system_prompt = ROLEPLAY_PROMPTS.get(scenario, ROLEPLAY_PROMPTS["job_interview"])
     history = []
     for msg in messages[:-1]:
         role = "user" if msg["role"] == "user" else "model"
         history.append({"role": role, "parts": [msg["content"]]})
-
-    user_input = messages[-1]["content"] if messages else ""
 
     for model_name in GEMINI_MODELS:
         try:
@@ -184,23 +233,23 @@ async def get_roleplay_response(scenario: str, messages: list[dict]) -> str:
             )
             chat = model.start_chat(history=history)
             response = chat.send_message(user_input)
-            if response.text:
-                return response.text
+            if response.text and len(response.text.strip()) > 0:
+                return response.text.strip()
         except Exception as e:
             logger.warning("Gemini roleplay model %s failed: %s", model_name, e)
 
-    return _get_mock_response(mock_key)
+    return _generate_dynamic_roleplay_mock(scenario, user_input, user_turns)
 
 
 async def get_roleplay_feedback(scenario: str, messages: list[dict]) -> str:
-    """Generate end-of-session feedback for a roleplay conversation with model fallback."""
+    """Generate end-of-session feedback summary."""
     if not GEMINI_API_KEY:
         return (
             "**Great practice session!** 🎉\n\n"
-            "• **Confidence**: You came across as thoughtful and genuine.\n"
-            "• **Flow**: Good conversational rhythm — you engaged naturally.\n"
-            "• **Tip**: Try adding a bit more detail to your responses to showcase your personality.\n\n"
-            "*Keep practicing — you're building real confidence with every session!*"
+            "• **Confidence signals**: You expressed your ideas clearly and stayed engaged.\n"
+            "• **Conversation flow**: Natural back-and-forth pacing throughout the scenario.\n"
+            "• **Areas to practice**: Try adding a tiny bit more personal detail to make your answers stand out.\n\n"
+            "*Keep practicing — you are building real confidence with every session!*"
         )
 
     conversation_text = "\n".join(
@@ -216,14 +265,14 @@ async def get_roleplay_feedback(scenario: str, messages: list[dict]) -> str:
             response = model.generate_content(
                 f"Here is the roleplay conversation to evaluate:\n\n{conversation_text}"
             )
-            if response.text:
-                return response.text
+            if response.text and len(response.text.strip()) > 0:
+                return response.text.strip()
         except Exception as e:
             logger.warning("Gemini feedback model %s failed: %s", model_name, e)
 
     return (
         "**Nice work completing that practice session!** 🎉\n\n"
-        "• You showed great initiative by practicing.\n"
-        "• Try to keep responses a bit longer next time.\n\n"
-        "*Every practice session builds your confidence!*"
+        "• **Confidence**: Great initiative in starting and finishing the practice.\n"
+        "• **Pacing**: Steady answers and comfortable tone.\n\n"
+        "*Every practice session builds real-world confidence!*"
     )

@@ -104,7 +104,6 @@ export default function App() {
           <Route path="/*" element={<AnimatedRoutes />} />
         </Route>
       </Routes>
-      <OnboardingModal />
       <ToastViewport />
     </BrowserRouter>
   );

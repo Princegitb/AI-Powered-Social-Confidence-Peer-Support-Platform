@@ -1,16 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, Volume2, VolumeX, Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { Send, Mic, MicOff, Volume2, VolumeX, Sparkles, Loader2, ArrowRight, PhoneOff, Radio } from 'lucide-react';
 import ChatBubble from '../components/ui/ChatBubble';
 import DisclaimerStrip from '../components/ui/DisclaimerStrip';
 import useChatStore from '../store/chatStore';
 
 /**
- * AI Companion ("Sara") — Matches Reference Image 2
+ * AI Companion ("Sara") — Matches Reference Image 2 + Continuous 2-Way Voice Call Mode
  * Features:
  * - Sara Header bar with status indicator & [Chat] / [Voice] toggle
- * - Text-to-speech auto-play toggle ([x] Auto-play Sara) + Speech Synthesis
- * - Right Sidebar: 3D Orb card + "Start voice with Sara" button
+ * - Fast Offline NLP Greetings + Gemini AI Bro/Buddy Conversation Engine
+ * - Continuous 2-Way Voice Call Mode: Hands-free listening -> Auto send -> Auto TTS -> Resume listening!
+ * - Right Sidebar: 3D Orb visual card + "Start voice with Sara" button
  * - "Try a starting point" card with 5 quick prompt starters
  */
 
@@ -52,12 +53,16 @@ export default function AICompanion() {
   const [mode, setMode] = useState('chat'); // 'chat' | 'voice'
   const [autoPlay, setAutoPlay] = useState(true);
   const [isListening, setIsListening] = useState(false);
+  const [isVoiceCallActive, setIsVoiceCallActive] = useState(false);
+  const [voiceCallStatus, setVoiceCallStatus] = useState('Listening...'); // 'Listening...' | 'Thinking...' | 'Sara speaking...'
+  const [liveTranscript, setLiveTranscript] = useState('');
+
   const messagesEndRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   const {
     companionMessages,
     companionLoading,
-    companionSuggestions,
     sendCompanionMessage,
   } = useChatStore();
 
@@ -67,57 +72,132 @@ export default function AICompanion() {
   }, [companionMessages, companionLoading]);
 
   // Speech Synthesis helper
-  const speakText = (text) => {
+  const speakText = (text, onEndCallback) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const clean = text.replace(/[*#_]/g, '');
       const utterance = new SpeechSynthesisUtterance(clean);
       utterance.rate = 1.0;
       utterance.pitch = 1.1; // Friendly warm pitch for Sara
+
+      if (onEndCallback) {
+        utterance.onend = onEndCallback;
+        utterance.onerror = onEndCallback;
+      }
+
       window.speechSynthesis.speak(utterance);
+    } else if (onEndCallback) {
+      onEndCallback();
     }
   };
 
-  // Auto-play TTS on new AI response
+  // Auto-play TTS on new AI response in chat mode
   useEffect(() => {
-    if (autoPlay && companionMessages.length > 0) {
+    if (autoPlay && !isVoiceCallActive && companionMessages.length > 0) {
       const last = companionMessages[companionMessages.length - 1];
       if (last.role === 'assistant') {
         speakText(last.content);
       }
     }
-  }, [companionMessages, autoPlay]);
+  }, [companionMessages, autoPlay, isVoiceCallActive]);
 
-  // Speech Recognition helper (Web Speech API)
-  const toggleVoiceInput = () => {
+  // ── CONTINUOUS 2-WAY VOICE CALL HANDLER ──
+  const startVoiceCall = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in this browser. You can type your message!');
+      alert('Voice calls require speech recognition. Please try in Chrome or Edge!');
       return;
     }
 
-    if (isListening) {
-      setIsListening(false);
-      return;
-    }
+    setIsVoiceCallActive(true);
+    setMode('voice');
+    setVoiceCallStatus('Sara is listening...');
+    setLiveTranscript('');
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
+    let silenceTimer = null;
+    let finalSpeech = '';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setVoiceCallStatus('Sara is listening...');
+    };
 
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      if (transcript) {
-        setInput(transcript);
-        sendCompanionMessage(transcript);
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalSpeech += event.results[i][0].transcript + ' ';
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+
+      const currentText = (finalSpeech + interim).trim();
+      setLiveTranscript(currentText);
+
+      // Reset silence timer on new speech
+      if (silenceTimer) clearTimeout(silenceTimer);
+
+      if (currentText.length > 2) {
+        silenceTimer = setTimeout(() => {
+          // Pause recognition while processing and speaking
+          try {
+            recognition.stop();
+          } catch (e) {}
+
+          setVoiceCallStatus('Sara is thinking...');
+          sendCompanionMessage(currentText).then(() => {
+            // Get latest assistant response
+            const msgs = useChatStore.getState().companionMessages;
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              setVoiceCallStatus('Sara is speaking...');
+              speakText(lastMsg.content, () => {
+                // Resume listening when Sara finishes speaking out loud!
+                setLiveTranscript('');
+                finalSpeech = '';
+                setVoiceCallStatus('Sara is listening...');
+                try {
+                  recognition.start();
+                } catch (e) {}
+              });
+            }
+          });
+        }, 1800); // 1.8s silence pause triggers response
       }
     };
 
-    recognition.start();
+    recognition.onerror = () => {
+      setVoiceCallStatus('Listening...');
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch (e) {}
+  };
+
+  const stopVoiceCall = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsVoiceCallActive(false);
+    setIsListening(false);
+    setMode('chat');
+    setLiveTranscript('');
   };
 
   const handleSend = () => {
@@ -137,8 +217,53 @@ export default function AICompanion() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[calc(100vh-100px)]">
       {/* ── LEFT & MAIN CHAT AREA (8 cols) ── */}
-      <div className="lg:col-span-8 flex flex-col h-full bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-card border border-border-subtle">
-        {/* Sara Header Bar (Image 2 match) */}
+      <div className="lg:col-span-8 flex flex-col h-full bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-card border border-border-subtle relative overflow-hidden">
+        
+        {/* Continuous 2-Way Voice Call Overlay (When Call is Active) */}
+        <AnimatePresence>
+          {isVoiceCallActive && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="absolute inset-0 z-40 bg-gradient-to-b from-primary-dark/95 via-primary/95 to-bg-gradient-start/95 backdrop-blur-xl flex flex-col items-center justify-between p-8 text-white"
+            >
+              {/* Call Top Bar */}
+              <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-[13px] font-medium">
+                <Radio size={14} className="text-success animate-pulse" />
+                <span>Live Voice Call with Sara</span>
+              </div>
+
+              {/* Call Center Visualizer */}
+              <div className="text-center space-y-6 my-auto">
+                <div className="relative mx-auto w-32 h-32 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full bg-white/20 animate-ping opacity-75" />
+                  <div className="w-28 h-28 rounded-full bg-white text-primary flex items-center justify-center shadow-card-lg text-4xl">
+                    🔮
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h2 className="text-[26px] font-bold font-serif">{voiceCallStatus}</h2>
+                  <p className="text-[14px] text-white/80 max-w-md mx-auto min-h-[40px]">
+                    {liveTranscript ? `"${liveTranscript}"` : 'Talk freely — Sara is right here listening...'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Call Controls */}
+              <button
+                onClick={stopVoiceCall}
+                className="py-3.5 px-8 rounded-full bg-danger text-white font-semibold text-[14.5px] flex items-center gap-2 shadow-card hover:bg-danger/90 transition-all cursor-pointer"
+              >
+                <PhoneOff size={18} />
+                <span>End Voice Call</span>
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Sara Header Bar */}
         <div className="flex items-center justify-between pb-4 border-b border-border-subtle mb-4">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -155,10 +280,13 @@ export default function AICompanion() {
             </div>
           </div>
 
-          {/* Mode Switcher [Chat] [Voice] */}
+          {/* Mode Switcher [Chat] [Voice Call] */}
           <div className="flex items-center bg-surface-soft p-1 rounded-full border border-border-subtle">
             <button
-              onClick={() => setMode('chat')}
+              onClick={() => {
+                if (isVoiceCallActive) stopVoiceCall();
+                setMode('chat');
+              }}
               className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all ${
                 mode === 'chat' ? 'bg-white text-text-primary shadow-card' : 'text-text-tertiary hover:text-text-primary'
               }`}
@@ -166,15 +294,12 @@ export default function AICompanion() {
               💭 Chat
             </button>
             <button
-              onClick={() => {
-                setMode('voice');
-                toggleVoiceInput();
-              }}
+              onClick={startVoiceCall}
               className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all ${
                 mode === 'voice' ? 'bg-white text-text-primary shadow-card' : 'text-text-tertiary hover:text-text-primary'
               }`}
             >
-              🎤 Voice
+              🎤 Voice Call
             </button>
           </div>
         </div>
@@ -190,7 +315,7 @@ export default function AICompanion() {
               </div>
               <h3 className="text-h2">Talk to Sara</h3>
               <p className="text-body max-w-sm text-sm">
-                Sara is right here with you. Type a message or pick a starting point from the panel on the right.
+                Sara is right here with you bro. Type a message or start a live voice call!
               </p>
             </div>
           )}
@@ -224,7 +349,7 @@ export default function AICompanion() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Bar with Auto-play checkbox & Voice Button (Image 2 match) */}
+        {/* Input Bar */}
         <div className="pt-3 border-t border-border-subtle">
           <div className="flex items-center gap-3">
             <div className="flex-1 bg-white rounded-2xl shadow-card border border-border-subtle px-4 py-3 flex items-center gap-2">
@@ -237,11 +362,9 @@ export default function AICompanion() {
                 className="flex-1 bg-transparent text-[14.5px] text-text-primary placeholder-text-tertiary outline-none"
               />
               <button
-                onClick={toggleVoiceInput}
-                className={`p-2 rounded-xl transition-colors ${
-                  isListening ? 'bg-danger text-white animate-pulse' : 'text-text-tertiary hover:bg-surface-soft hover:text-primary'
-                }`}
-                title="Voice Input"
+                onClick={startVoiceCall}
+                className="p-2 rounded-xl text-text-tertiary hover:bg-surface-soft hover:text-primary transition-colors"
+                title="Start Voice Call"
               >
                 <Mic size={18} />
               </button>
@@ -258,7 +381,6 @@ export default function AICompanion() {
             </motion.button>
           </div>
 
-          {/* Footer Controls & Note */}
           <div className="flex items-center justify-between mt-3 text-[12px] text-text-tertiary px-1">
             <span>Text and voice stay in one conversation</span>
             <label className="flex items-center gap-1.5 cursor-pointer hover:text-text-primary">
@@ -274,7 +396,7 @@ export default function AICompanion() {
         </div>
       </div>
 
-      {/* ── RIGHT SIDEBAR: Sara Orb & Starting Points (4 cols) (Image 2 match) ── */}
+      {/* ── RIGHT SIDEBAR: Sara Orb & Starting Points ── */}
       <div className="lg:col-span-4 space-y-6">
         {/* Sara 3D Visual Card */}
         <div className="card text-center p-6 space-y-4 relative overflow-hidden bg-gradient-to-b from-white to-surface-soft">
@@ -285,18 +407,18 @@ export default function AICompanion() {
           <div>
             <h3 className="text-h2">Ready when you are</h3>
             <p className="text-[12.5px] text-text-tertiary mt-1">
-              Talk, type, or switch modes. Sara keeps the same thread.
+              Talk, type, or start a voice call. Sara keeps the same thread.
             </p>
           </div>
 
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={toggleVoiceInput}
+            onClick={startVoiceCall}
             className="w-full py-3 px-4 rounded-2xl bg-primary text-white font-medium text-[14px] flex items-center justify-center gap-2 shadow-card hover:bg-primary-dark transition-colors cursor-pointer"
           >
             <Mic size={18} />
-            <span>{isListening ? 'Listening...' : 'Start voice with Sara'}</span>
+            <span>Start voice call with Sara</span>
           </motion.button>
         </div>
 

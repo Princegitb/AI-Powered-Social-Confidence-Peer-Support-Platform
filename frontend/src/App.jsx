@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import AppLayout from './components/layout/AppLayout';
 import OnboardingModal from './components/OnboardingModal';
 import { ToastViewport } from './components/ui/Toast';
 import useProgressStore from './store/progressStore';
+import useUserStore from './store/userStore';
 
+import Login from './pages/Login';
+import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import AICompanion from './pages/AICompanion';
 import RoleplaySelector from './pages/RoleplaySelector';
@@ -21,6 +24,17 @@ import Journal from './pages/Journal';
 import Safety from './pages/Safety';
 import Challenges from './pages/Challenges';
 import NotFound from './pages/NotFound';
+
+/**
+ * ProtectedRoute — ensures user is authenticated before viewing app screens.
+ */
+function ProtectedRoute({ children }) {
+  const isAuthenticated = useUserStore((s) => s.isAuthenticated);
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
 
 /**
  * AnimatedRoutes — wraps route changes in a smooth crossfade transition.
@@ -59,14 +73,14 @@ function AnimatedRoutes() {
   );
 }
 
-/**
- * ProgressBoot — fetches progress on first mount so the dashboard has data ready.
- */
 function ProgressBoot() {
   const fetchAll = useProgressStore((s) => s.fetchAll);
+  const userId = useUserStore((s) => s.userId);
+
   useEffect(() => {
-    fetchAll(true);
-  }, []);
+    if (userId) fetchAll(true);
+  }, [userId]);
+
   return null;
 }
 
@@ -75,7 +89,18 @@ export default function App() {
     <BrowserRouter>
       <ProgressBoot />
       <Routes>
-        <Route element={<AppLayout />}>
+        {/* Public Auth Routes */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+
+        {/* Protected App Routes */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
           <Route path="/*" element={<AnimatedRoutes />} />
         </Route>
       </Routes>

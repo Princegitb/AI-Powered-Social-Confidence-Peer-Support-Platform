@@ -131,11 +131,14 @@ export default function AvatarMenu() {
                   Your progress
                 </button>
                 <button
-                  onClick={handleReset}
+                  onClick={() => {
+                    useUserStore.getState().logout();
+                    window.location.href = '/login';
+                  }}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[14px] text-danger hover:bg-danger/10 transition-colors"
                 >
                   <RotateCcw size={15} />
-                  Reset data
+                  Log Out
                 </button>
               </div>
             )}

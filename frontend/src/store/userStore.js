@@ -3,18 +3,18 @@ import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
 
 /**
- * User store — display alias + preferences + onboarding flag.
- * Rehydrates from localStorage so the app remembers the user across reloads.
- *
- * For the hackathon MVP we don't do real auth — we just generate a stable
- * user_id on first launch and persist it. Real auth is a future-scope item.
+ * User store — handles login, signup, persistent authentication state,
+ * display alias, user goals, and preferences.
  */
 
 const useUserStore = create(
   persist(
     (set, get) => ({
       userId: null,
+      email: '',
       displayName: '',
+      goals: [],
+      isAuthenticated: false,
       preferences: {
         preferred_format: 'text',
         session_length: 'short',
@@ -25,10 +25,77 @@ const useUserStore = create(
       ensureUserId: () => {
         let { userId } = get();
         if (!userId) {
-          userId = nanoid();
+          userId = `guest_${nanoid(8)}`;
           set({ userId });
         }
         return userId;
+      },
+
+      login: async (email, password) => {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Login failed. Please check your credentials.');
+        }
+
+        const data = await res.json();
+        set({
+          userId: data.user_id,
+          email: data.email,
+          displayName: data.display_name,
+          goals: data.goals || [],
+          isAuthenticated: true,
+          onboarded: true,
+        });
+
+        return data;
+      },
+
+      signup: async (email, password, displayName, goals = []) => {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            password,
+            display_name: displayName,
+            goals,
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Registration failed.');
+        }
+
+        const data = await res.json();
+        set({
+          userId: data.user_id,
+          email: data.email,
+          displayName: data.display_name,
+          goals: data.goals || [],
+          isAuthenticated: true,
+          onboarded: true,
+        });
+
+        return data;
+      },
+
+      logout: () => {
+        set({
+          userId: null,
+          email: '',
+          displayName: '',
+          goals: [],
+          isAuthenticated: false,
+          onboarded: false,
+        });
+        localStorage.removeItem('saathi-user');
       },
 
       setDisplayName: async (name) => {
@@ -42,7 +109,6 @@ const useUserStore = create(
             body: JSON.stringify({ user_id: userId, display_name: trimmed }),
           });
         } catch (e) {
-          // Non-fatal — store keeps the local value.
           console.warn('Failed to sync display name:', e);
         }
       },
@@ -67,7 +133,10 @@ const useUserStore = create(
       reset: () => {
         set({
           userId: null,
+          email: '',
           displayName: '',
+          goals: [],
+          isAuthenticated: false,
           preferences: {
             preferred_format: 'text',
             session_length: 'short',
@@ -81,7 +150,10 @@ const useUserStore = create(
       name: 'saathi-user',
       partialize: (s) => ({
         userId: s.userId,
+        email: s.email,
         displayName: s.displayName,
+        goals: s.goals,
+        isAuthenticated: s.isAuthenticated,
         preferences: s.preferences,
         onboarded: s.onboarded,
       }),

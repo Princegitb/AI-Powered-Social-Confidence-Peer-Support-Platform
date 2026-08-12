@@ -1,12 +1,25 @@
 """
 SAATHI Chat Router
-Handles AI Companion conversation with Safety Shield integration.
+Handles AI Companion conversation with Safety Shield integration,
+persistence to MongoDB, and redaction of contact info.
 """
 
-from fastapi import APIRouter
+import logging
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Header
 from pydantic import BaseModel
+
+from database import (
+    get_or_create_user,
+    log_progress,
+    sessions_collection,
+)
 from services.llm_service import get_companion_response
-from services.safety_shield import check_message
+from services.safety_shield import check_message, redact_text
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 router = APIRouter()
 
@@ -18,55 +31,95 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    user_id: str | None = None
 
 
 class ChatResponse(BaseModel):
     reply: str
     safety: dict
     suggestions: list[str] = []
+    redacted: bool = False
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    x_user_id: str | None = Header(default=None),
+):
     """
     AI Companion chat endpoint.
     Every message passes through the Safety Shield before processing.
     """
+    # Identify the user (no real auth — just a stable id passed by frontend)
+    user_id = request.user_id or x_user_id or "demo-user"
+    await get_or_create_user(user_id, "Friend")
+
     messages = [m.model_dump() for m in request.messages]
     user_message = messages[-1]["content"] if messages else ""
 
-    # Safety Shield: check user's message
+    # First — redact any contact info in the user message before passing it anywhere.
+    redacted_text = redact_text(user_message)
+    redacted = redacted_text != user_message
+
+    # Use the redacted text for everything downstream.
+    messages[-1]["content"] = redacted_text
+    user_message = redacted_text
+
+    # Safety Shield: check the (already-redacted) message
     safety_result = await check_message(user_message, deep_check=True)
 
     if not safety_result["is_safe"]:
         if safety_result.get("crisis"):
-            # Crisis response — supportive, non-diagnostic
+            reply_text = (
+                "It sounds like you might be going through something difficult right now. "
+                "You're not alone, and there are people who can help. 💛\n\n"
+                "Would you like to:\n"
+                "• Talk to a trusted person in your life\n"
+                "• Find professional support resources\n"
+                "• Continue our conversation\n\n"
+                "Remember: SAATHI is here to support your practice, "
+                "and real help is always available when you need it."
+            )
+            suggestions = ["Find support resources", "Continue talking"]
+
+            # Persist (don't store raw user message if it was redacted, store redacted form)
+            await sessions_collection.insert_one({
+                "user_id": user_id,
+                "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
+                "reply": reply_text,
+                "safety": safety_result,
+                "created_at": datetime.now(timezone.utc),
+            })
+            await log_progress(user_id, "companion_message")
+
             return ChatResponse(
-                reply=(
-                    "It sounds like you might be going through something difficult right now. "
-                    "You're not alone, and there are people who can help. 💛\n\n"
-                    "Would you like to:\n"
-                    "• Talk to a trusted person in your life\n"
-                    "• Find professional support resources\n"
-                    "• Continue our conversation\n\n"
-                    "Remember: SAATHI is here to support your practice, "
-                    "and real help is always available when you need it."
-                ),
+                reply=reply_text,
                 safety=safety_result,
-                suggestions=["Find support resources", "Continue talking"],
+                suggestions=suggestions,
+                redacted=redacted,
             )
 
         if safety_result["action"] == "block":
             return ChatResponse(
-                reply="I want to keep our conversation supportive and safe. Let's talk about something else — what would you like to practice today?",
+                reply=(
+                    "I want to keep our conversation supportive and safe. "
+                    "Let's talk about something else — what would you like to practice today?"
+                ),
                 safety=safety_result,
                 suggestions=["Practice a conversation", "Try a roleplay"],
+                redacted=redacted,
             )
 
     # Get AI response
-    reply = await get_companion_response(messages)
+    try:
+        reply = await get_companion_response(messages)
+    except Exception as e:
+        logger.exception("AI response failed: %s", e)
+        reply = (
+            "I'm having trouble connecting right now. Let's try again in a moment! 💛"
+        )
 
-    # Safety Shield: also check AI's response (catch LLM misbehavior)
+    # Safety check the AI response too (catch LLM misbehavior)
     ai_safety = await check_message(reply, deep_check=False)
     if not ai_safety["is_safe"]:
         reply = "I'd love to help you practice! What kind of conversation would you like to work on today?"
@@ -74,10 +127,21 @@ async def chat(request: ChatRequest):
     # Generate contextual suggestions
     suggestions = _generate_suggestions(user_message, reply)
 
+    # Persist the turn
+    await sessions_collection.insert_one({
+        "user_id": user_id,
+        "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
+        "reply": reply,
+        "safety": safety_result,
+        "created_at": datetime.now(timezone.utc),
+    })
+    await log_progress(user_id, "companion_message")
+
     return ChatResponse(
         reply=reply,
         safety=safety_result,
         suggestions=suggestions,
+        redacted=redacted,
     )
 
 
@@ -92,6 +156,8 @@ def _generate_suggestions(user_msg: str, ai_reply: str) -> list[str]:
         suggestions.append("Practice meeting someone new")
     if any(word in lower for word in ["nervous", "scared", "anxious", "worried"]):
         suggestions.append("Try a roleplay scenario")
+    if any(word in lower for word in ["lonely", "alone", "isolated", "vent"]):
+        suggestions.append("Find your Saathi")
     if any(word in lower for word in ["practice", "better", "improve"]):
         suggestions.append("Start a practice session")
 

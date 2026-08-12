@@ -1,15 +1,29 @@
 """
 SAATHI LLM Service
 Wraps Google Gemini API for AI Companion and Roleplay conversations.
-Enforces ethical guardrails in every system prompt.
+Enforces ethical guardrails in every system prompt. Includes model fallbacks.
 """
 
+import logging
+import random
+import warnings
 import google.generativeai as genai
 from config import GEMINI_API_KEY
 
-# Configure Gemini
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Configure Gemini (only if key present)
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+    except Exception as e:
+        logger.warning("Failed to configure Gemini API: %s", e)
+
+# Priority model list for robust fallback
+GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 
 # ----- Base safety preamble injected into EVERY system prompt -----
 SAFETY_PREAMBLE = """
@@ -94,8 +108,7 @@ Evaluate these aspects (frame as PRACTICE FEEDBACK, never clinical assessment):
 Keep it to 3-4 short bullet points. Be encouraging and specific. End with a motivating one-liner.
 """
 
-
-# Mock responses for when no API key is configured
+# Mock responses for when no API key is configured or API is unreachable
 MOCK_RESPONSES = {
     "companion": [
         "That's really brave of you to share that! 💛 It sounds like you're taking some important steps. Would you like to try a practice conversation about that situation?",
@@ -114,81 +127,73 @@ MOCK_RESPONSES = {
     ],
 }
 
-_mock_index = {"companion": 0, "interview": 0, "meeting": 0}
-
 
 def _get_mock_response(category: str) -> str:
-    """Cycle through mock responses when no API key is available."""
-    responses = MOCK_RESPONSES[category]
-    idx = _mock_index[category] % len(responses)
-    _mock_index[category] += 1
-    return responses[idx]
+    """Pick a random mock response so concurrent sessions don't see identical lines."""
+    return random.choice(MOCK_RESPONSES.get(category, MOCK_RESPONSES["companion"]))
 
 
 async def get_companion_response(messages: list[dict]) -> str:
-    """
-    Get AI Companion response.
-    messages: list of {"role": "user"|"assistant", "content": "..."}
-    """
+    """Get AI Companion response with model fallback handling."""
     if not GEMINI_API_KEY:
         return _get_mock_response("companion")
 
-    try:
-        model = genai.GenerativeModel(
-            "gemini-1.5-flash",
-            system_instruction=COMPANION_SYSTEM_PROMPT,
-        )
+    history = []
+    for msg in messages[:-1]:
+        role = "user" if msg["role"] == "user" else "model"
+        history.append({"role": role, "parts": [msg["content"]]})
 
-        # Convert messages to Gemini format
-        history = []
-        for msg in messages[:-1]:
-            role = "user" if msg["role"] == "user" else "model"
-            history.append({"role": role, "parts": [msg["content"]]})
+    user_input = messages[-1]["content"] if messages else ""
 
-        chat = model.start_chat(history=history)
-        response = chat.send_message(messages[-1]["content"])
-        return response.text
+    for model_name in GEMINI_MODELS:
+        try:
+            model = genai.GenerativeModel(
+                model_name,
+                system_instruction=COMPANION_SYSTEM_PROMPT,
+            )
+            chat = model.start_chat(history=history)
+            response = chat.send_message(user_input)
+            if response.text:
+                return response.text
+        except Exception as e:
+            logger.warning("Gemini model %s failed: %s", model_name, e)
 
-    except Exception as e:
-        print(f"LLM error: {e}")
-        return _get_mock_response("companion")
+    return _get_mock_response("companion")
 
 
-async def get_roleplay_response(
-    scenario: str, messages: list[dict]
-) -> str:
-    """
-    Get roleplay response for a given scenario.
-    scenario: "job_interview" | "meeting_new_person"
-    """
+async def get_roleplay_response(scenario: str, messages: list[dict]) -> str:
+    """Get roleplay response for a given scenario with model fallback."""
     mock_key = "interview" if scenario == "job_interview" else "meeting"
 
     if not GEMINI_API_KEY:
         return _get_mock_response(mock_key)
 
-    try:
-        system_prompt = ROLEPLAY_PROMPTS.get(scenario, ROLEPLAY_PROMPTS["job_interview"])
-        model = genai.GenerativeModel(
-            "gemini-1.5-flash",
-            system_instruction=system_prompt,
-        )
+    system_prompt = ROLEPLAY_PROMPTS.get(scenario, ROLEPLAY_PROMPTS["job_interview"])
+    history = []
+    for msg in messages[:-1]:
+        role = "user" if msg["role"] == "user" else "model"
+        history.append({"role": role, "parts": [msg["content"]]})
 
-        history = []
-        for msg in messages[:-1]:
-            role = "user" if msg["role"] == "user" else "model"
-            history.append({"role": role, "parts": [msg["content"]]})
+    user_input = messages[-1]["content"] if messages else ""
 
-        chat = model.start_chat(history=history)
-        response = chat.send_message(messages[-1]["content"])
-        return response.text
+    for model_name in GEMINI_MODELS:
+        try:
+            model = genai.GenerativeModel(
+                model_name,
+                system_instruction=system_prompt,
+            )
+            chat = model.start_chat(history=history)
+            response = chat.send_message(user_input)
+            if response.text:
+                return response.text
+        except Exception as e:
+            logger.warning("Gemini roleplay model %s failed: %s", model_name, e)
 
-    except Exception as e:
-        print(f"LLM error: {e}")
-        return _get_mock_response(mock_key)
+    return _get_mock_response(mock_key)
 
 
 async def get_roleplay_feedback(scenario: str, messages: list[dict]) -> str:
-    """Generate end-of-session feedback for a roleplay conversation."""
+    """Generate end-of-session feedback for a roleplay conversation with model fallback."""
     if not GEMINI_API_KEY:
         return (
             "**Great practice session!** 🎉\n\n"
@@ -198,27 +203,27 @@ async def get_roleplay_feedback(scenario: str, messages: list[dict]) -> str:
             "*Keep practicing — you're building real confidence with every session!*"
         )
 
-    try:
-        model = genai.GenerativeModel(
-            "gemini-1.5-flash",
-            system_instruction=FEEDBACK_PROMPT,
-        )
+    conversation_text = "\n".join(
+        f"{'User' if m['role'] == 'user' else 'AI'}: {m['content']}" for m in messages
+    )
 
-        conversation_text = "\n".join(
-            f"{'User' if m['role'] == 'user' else 'AI'}: {m['content']}"
-            for m in messages
-        )
+    for model_name in GEMINI_MODELS:
+        try:
+            model = genai.GenerativeModel(
+                model_name,
+                system_instruction=FEEDBACK_PROMPT,
+            )
+            response = model.generate_content(
+                f"Here is the roleplay conversation to evaluate:\n\n{conversation_text}"
+            )
+            if response.text:
+                return response.text
+        except Exception as e:
+            logger.warning("Gemini feedback model %s failed: %s", model_name, e)
 
-        response = model.generate_content(
-            f"Here is the roleplay conversation to evaluate:\n\n{conversation_text}"
-        )
-        return response.text
-
-    except Exception as e:
-        print(f"Feedback LLM error: {e}")
-        return (
-            "**Nice work completing that practice session!** 🎉\n\n"
-            "• You showed great initiative by practicing.\n"
-            "• Try to keep responses a bit longer next time.\n\n"
-            "*Every practice session builds your confidence!*"
-        )
+    return (
+        "**Nice work completing that practice session!** 🎉\n\n"
+        "• You showed great initiative by practicing.\n"
+        "• Try to keep responses a bit longer next time.\n\n"
+        "*Every practice session builds your confidence!*"
+    )

@@ -1,0 +1,178 @@
+"""
+SAATHI Peer Router
+Anonymous peer matching + chat. For the hackathon MVP we ship a small
+set of seeded profiles and a simple tag-overlap match. ChromaDB cosine
+matching is on the future-scope list (per PRD §5.5).
+"""
+
+import logging
+import random
+from datetime import datetime, timezone
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+from database import (
+    get_or_create_user,
+    log_progress,
+    peer_sessions_collection,
+)
+from services.safety_shield import check_message, redact_text
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+router = APIRouter()
+
+
+# Seeded saathi profiles (mock for the demo) — display alias + tag overlap
+SEEDED_SAATHIS = [
+    {
+        "id": "saathi-1",
+        "alias": "Lotus",
+        "tags": ["social-anxiety", "college", "practice"],
+        "bio": "Working through social anxiety one chat at a time. Love talking about books and music.",
+        "intent": "support",
+    },
+    {
+        "id": "saathi-2",
+        "alias": "River",
+        "tags": ["confidence", "interview", "practice"],
+        "bio": "Practiced for 30+ interviews last year. Happy to rehearse with you.",
+        "intent": "practice",
+    },
+    {
+        "id": "saathi-3",
+        "alias": "Moss",
+        "tags": ["loneliness", "casual", "listening"],
+        "bio": "Here for low-pressure conversations. No advice unless asked.",
+        "intent": "casual",
+    },
+    {
+        "id": "saathi-4",
+        "alias": "Cloud",
+        "tags": ["public-speaking", "confidence", "practice"],
+        "bio": "Working on presentations and small-group speaking. Let's practice together.",
+        "intent": "practice",
+    },
+]
+
+
+@router.get("/peer/saathi")
+async def find_saathi(user_id: str = "demo-user", anchor: str | None = None):
+    """
+    Return seeded saathi profiles. If anchor is provided, prefer the one whose
+    alias matches (used by the "Continue chatting" flow). Otherwise return all.
+    """
+    if anchor:
+        for s in SEEDED_SAATHIS:
+            if s["id"] == anchor or s["alias"].lower() == anchor.lower():
+                return {"match": s, "alternatives": [x for x in SEEDED_SAATHIS if x["id"] != s["id"]][:2]}
+    return {"match": random.choice(SEEDED_SAATHIS), "alternatives": SEEDED_SAATHIS[:3]}
+
+
+@router.get("/peer/saathi/all")
+async def list_all_saathis():
+    """List all seeded saathis for the Find Your Saathi page."""
+    return {"saathis": SEEDED_SAATHIS}
+
+
+class PeerMessage(BaseModel):
+    role: str  # "user" | "saathi"
+    content: str
+
+
+class PeerChatRequest(BaseModel):
+    user_id: str
+    saathi_id: str
+    intent: str  # "casual" | "practice" | "support" | "listening"
+    messages: list[PeerMessage]
+
+
+class PeerChatResponse(BaseModel):
+    reply: str
+    safety: dict
+    redacted: bool = False
+
+
+# Pre-written mock replies per (intent × turn index) for the demo.
+_SAATHI_REPLIES = {
+    "casual": [
+        "Same here, honestly. What kind of stuff do you usually talk about?",
+        "That sounds really nice. I could go for something like that right now.",
+        "Haha, fair. So what's been on your mind this week?",
+    ],
+    "practice": [
+        "Okay, let's try a quick one. Tell me about yourself as if you just met me.",
+        "Nicely done — your pacing felt really natural. Want to try a tougher one?",
+        "I noticed you paused before answering. That actually works in your favor here.",
+    ],
+    "support": [
+        "I hear you. Some days just feel like a lot, you know?",
+        "That sounds exhausting. Is there anything small that helps when it gets that heavy?",
+        "Just so you know — you don't have to have it figured out. You're allowed to take it slow.",
+    ],
+    "listening": [
+        "I'm here. Take your time.",
+        "Mm. I'm listening.",
+        "Thank you for sharing that with me.",
+    ],
+}
+
+
+@router.post("/peer/chat", response_model=PeerChatResponse)
+async def peer_chat(req: PeerChatRequest):
+    """
+    Forward a peer message through Safety Shield, persist it, and return
+    a mock saathi reply. Real peer matching would deliver the reply from
+    the matched human; for the MVP we keep a scripted simulated reply.
+    """
+    await get_or_create_user(req.user_id, "Friend")
+
+    if not req.messages:
+        return PeerChatResponse(
+            reply="",
+            safety={"is_safe": True, "category": "safe"},
+        )
+
+    user_msg = req.messages[-1].content
+    redacted_text = redact_text(user_msg)
+    redacted = redacted_text != user_msg
+
+    safety = await check_message(redacted_text, deep_check=True)
+    if not safety["is_safe"]:
+        if safety.get("crisis"):
+            return PeerChatResponse(
+                reply=(
+                    "Hey — I think that's something a real human should hear. "
+                    "Would you be open to reaching out to someone you trust, or a helpline? "
+                    "I'm here, but I want you to get the kind of support that really helps. 💛"
+                ),
+                safety=safety,
+                redacted=redacted,
+            )
+        if safety["action"] == "block":
+            return PeerChatResponse(
+                reply="Let's keep this conversation respectful, okay?",
+                safety=safety,
+                redacted=redacted,
+            )
+
+    # Pick a mock reply
+    pool = _SAATHI_REPLIES.get(req.intent, _SAATHI_REPLIES["casual"])
+    turn_index = len(req.messages) - 1
+    reply = pool[turn_index % len(pool)]
+
+    # Persist
+    await peer_sessions_collection.insert_one({
+        "user_id": req.user_id,
+        "saathi_id": req.saathi_id,
+        "intent": req.intent,
+        "messages": [{"role": m.role, "content": m.content} for m in req.messages],
+        "reply": reply,
+        "safety": safety,
+        "created_at": datetime.now(timezone.utc),
+    })
+    await log_progress(req.user_id, "peer_message", {"saathi_id": req.saathi_id})
+
+    return PeerChatResponse(reply=reply, safety=safety, redacted=redacted)

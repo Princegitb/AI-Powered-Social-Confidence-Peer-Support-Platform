@@ -1,14 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Briefcase, UserPlus, Phone, Presentation, MessageSquare, HelpCircle } from 'lucide-react';
 import ScenarioCard from '../components/ui/ScenarioCard';
 import DisclaimerStrip from '../components/ui/DisclaimerStrip';
 import useChatStore from '../store/chatStore';
 
 /**
  * RoleplaySelector — DESIGN_SYSTEM.md Section 7.3
- * Grid of scenario cards. 2 active (Job Interview, Meeting New Person),
- * rest shown as "Coming Soon" per PRD Section 5.3 MVP scope.
+ * Grid of scenario cards.
  */
 
 const SCENARIOS = [
@@ -67,7 +65,6 @@ export default function RoleplaySelector() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -82,7 +79,6 @@ export default function RoleplaySelector() {
 
       <DisclaimerStrip variant="banner" />
 
-      {/* Scenario grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {SCENARIOS.map((scenario, i) => (
           <motion.div

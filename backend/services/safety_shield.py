@@ -4,9 +4,19 @@ Two-stage moderation: fast keyword pass + LLM classification for ambiguous cases
 Wired into AI Companion and Roleplay chats — every message passes through.
 """
 
+import json
+import logging
 import re
+import warnings
+from typing import Optional
+
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
+
 import google.generativeai as genai
 from config import GEMINI_API_KEY
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # ── Stage 1: Fast keyword/intent pass ──────────────────────────────────────
 
@@ -41,13 +51,15 @@ MANIPULATION_KEYWORDS = [
 ]
 
 # Contact info patterns (for peer chat redaction)
+# NOTE: email TLD character class fixed from [A-Z|a-z] (treated pipe as literal) → [A-Za-z].
+#      URL regex tightened so it doesn't swallow trailing punctuation/words.
 CONTACT_PATTERNS = [
-    r'\b\d{10,}\b',  # Phone numbers (10+ digits)
-    r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b',  # US phone format
-    r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Email
-    r'@[A-Za-z0-9_]{2,}',  # Social handles (@username)
-    r'https?://\S+',  # URLs
-    r'instagram|snapchat|telegram|whatsapp|discord|facebook|twitter',  # Platform names
+    r'\b\d{10,}\b',                                    # Phone numbers (10+ digits)
+    r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b',              # US phone format
+    r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',  # Email
+    r'(?<!\w)@[A-Za-z0-9_]{2,}',                       # Social handles (@username)
+    r'https?://[^\s,;.\)\]]+',                         # URLs (terminates on common punctuation)
+    r'\b(?:instagram|snapchat|telegram|whatsapp|discord|facebook|twitter)\b',
 ]
 
 
@@ -62,6 +74,7 @@ class SafetyResult:
         action: str = "allow",
         message: str = "",
         crisis: bool = False,
+        redacted: Optional[str] = None,
     ):
         self.is_safe = is_safe
         self.category = category
@@ -69,6 +82,7 @@ class SafetyResult:
         self.action = action
         self.message = message
         self.crisis = crisis
+        self.redacted = redacted  # populated when redaction occurred
 
     def to_dict(self):
         return {
@@ -78,7 +92,30 @@ class SafetyResult:
             "action": self.action,
             "message": self.message,
             "crisis": self.crisis,
+            "redacted": self.redacted,
         }
+
+
+def redact_text(text: str) -> str:
+    """
+    Replace any contact-info match with [redacted].
+    Returns the original text unchanged if no matches are found.
+    """
+    if not text:
+        return text
+
+    redacted = text
+    for pattern in CONTACT_PATTERNS:
+        redacted = re.sub(pattern, "[redacted]", redacted, flags=re.IGNORECASE)
+    return redacted
+
+
+def _has_contact_info(text: str) -> bool:
+    """Return True if any contact pattern matches."""
+    for pattern in CONTACT_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    return False
 
 
 def _fast_keyword_check(text: str) -> SafetyResult:
@@ -145,16 +182,17 @@ def _fast_keyword_check(text: str) -> SafetyResult:
                 message="Potentially manipulative language detected",
             )
 
-    # Check contact info sharing
-    for pattern in CONTACT_PATTERNS:
-        if re.search(pattern, text_lower, re.IGNORECASE):
-            return SafetyResult(
-                is_safe=False,
-                category="contact_sharing",
-                severity="low",
-                action="redact",
-                message="Contact information detected and redacted for safety",
-            )
+    # Check contact info sharing — now also returns the redacted form so callers can use it
+    if _has_contact_info(text):
+        redacted = redact_text(text)
+        return SafetyResult(
+            is_safe=False,
+            category="contact_sharing",
+            severity="low",
+            action="redact",
+            message="Contact information detected and redacted for safety",
+            redacted=redacted,
+        )
 
     # No obvious flags — safe
     return SafetyResult(is_safe=True)
@@ -194,13 +232,12 @@ async def _llm_classify(text: str) -> SafetyResult:
         return SafetyResult(is_safe=True)
 
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(
             SAFETY_CLASSIFICATION_PROMPT + f'"{text}"'
         )
-
-        import json
-        result = json.loads(response.text.strip().strip("```json").strip("```"))
+        raw = (response.text or "").strip().strip("```json").strip("```").strip()
+        result = json.loads(raw)
 
         category = result.get("category", "safe")
         severity = result.get("severity", "none")
@@ -220,10 +257,28 @@ async def _llm_classify(text: str) -> SafetyResult:
             crisis=is_crisis,
         )
 
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        # Conservative default: when the LLM gives us unparseable output, we FLAG the
+        # message rather than silently allowing it. This is the correct safe-default.
+        # The keyword pass has already caught obvious cases.
+        logger.warning("Safety LLM returned unparseable output, defaulting to flag: %s", e)
+        return SafetyResult(
+            is_safe=False,
+            category="unverified",
+            severity="low",
+            action="flag",
+            message="Could not verify content — flagged for review",
+        )
     except Exception as e:
-        print(f"Safety LLM classification error: {e}")
-        # On error, allow message through (keyword pass already caught obvious cases)
-        return SafetyResult(is_safe=True)
+        logger.exception("Safety LLM classification error: %s", e)
+        # Same conservative fallback for unexpected errors.
+        return SafetyResult(
+            is_safe=False,
+            category="unverified",
+            severity="low",
+            action="flag",
+            message="Safety check failed — flagged for review",
+        )
 
 
 # ── Public API ─────────────────────────────────────────────────────────────
@@ -236,9 +291,11 @@ CRISIS_RESPONSE = {
     ),
     "options": [
         {"label": "Talk to a trusted person", "action": "trusted_person"},
-        {"label": "Find professional support", "action": "professional_support", "url": "https://www.thelivelovelaughfoundation.org/find-help/helplines"},
+        {"label": "Find professional support", "action": "professional_support",
+         "url": "https://www.thelivelovelaughfoundation.org/find-help/helplines"},
         {"label": "Continue talking", "action": "continue"},
-        {"label": "Emergency resources", "action": "emergency", "url": "https://988lifeline.org/"},
+        {"label": "Emergency resources", "action": "emergency",
+         "url": "https://988lifeline.org/"},
     ],
 }
 
@@ -253,6 +310,7 @@ async def check_message(text: str, deep_check: bool = False) -> dict:
 
     Returns:
         dict with safety result + optional crisis response.
+        Includes "redacted" field if redaction occurred.
     """
     # Stage 1: Fast keyword pass
     result = _fast_keyword_check(text)

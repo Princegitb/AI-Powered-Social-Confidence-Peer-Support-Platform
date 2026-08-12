@@ -1,10 +1,14 @@
 import { motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 /**
  * ChatBubble — DESIGN_SYSTEM.md Section 7.2
  * User bubble: filled primary purple, white text, right-aligned.
  * AI bubble: white card, text-primary, left-aligned.
- * Animation: slide-in from sender's side, 150ms.
+ *
+ * Rendering uses ReactMarkdown (safer than dangerouslySetInnerHTML + regex),
+ * so LLM output cannot inject HTML/script.
  *
  * Props:
  *   message  — text content
@@ -44,19 +48,12 @@ export default function ChatBubble({ message, role, animate = true }) {
           }
         `}
       >
-        {/* Render markdown-like formatting for AI messages */}
-        {!isUser ? (
-          <div
-            className="whitespace-pre-wrap"
-            dangerouslySetInnerHTML={{
-              __html: message
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/• /g, '<br/>• ')
-            }}
-          />
-        ) : (
+        {isUser ? (
           <p className="whitespace-pre-wrap">{message}</p>
+        ) : (
+          <div className="markdown-body whitespace-pre-wrap">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message}</ReactMarkdown>
+          </div>
         )}
       </div>
     </motion.div>

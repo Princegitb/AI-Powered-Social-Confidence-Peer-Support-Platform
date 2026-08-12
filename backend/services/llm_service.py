@@ -1,8 +1,8 @@
 """
 SAATHI LLM Service
 Wraps Google Gemini API for AI Companion ("Sara") and Roleplay conversations.
-Enforces ethical guardrails in every prompt and provides intelligent, context-aware
-fallback responses when running in mock mode or when Gemini API key is not set.
+Enforces ethical guardrails in every prompt and provides an intelligent, compassionate,
+Hinglish-aware Intent NLP Engine when running in mock mode or when Gemini API key is not set.
 """
 
 import logging
@@ -35,6 +35,8 @@ CRITICAL RULES YOU MUST ALWAYS FOLLOW:
 5. If a user expresses acute distress or crisis, respond with empathy and gently suggest reaching out to a trusted person or professional support resource.
 6. Always frame feedback as "communication practice feedback," never as medical assessment.
 7. Keep your tone warm, encouraging, non-clinical, and conversational.
+8. Understand Hinglish, Hindi, and English fluently.
+9. If the user stammers or expresses speech disfluency, BE PATIENT, NEVER RUSH, and reassure them that pauses are natural.
 """
 
 COMPANION_SYSTEM_PROMPT = f"""
@@ -43,9 +45,9 @@ COMPANION_SYSTEM_PROMPT = f"""
 You are Sara — SAATHI's AI conversation companion.
 Your role:
 - Listen empathetically and respond naturally like a supportive friend.
+- Understand Hinglish (e.g. "kesa h tu", "depressed hu kya kru", "baat karni hai") and reply in warm, relatable Hinglish/English.
 - Keep responses concise (2-4 sentences typically), warm, and engaging.
-- If the user asks general questions like "how are you", "what's up", respond naturally first!
-- When you detect nervousness or interview/speaking goals, suggest relevant practice scenarios.
+- If the user is feeling low or stressed, give gentle emotional comfort without medical diagnosis.
 """
 
 ROLEPLAY_PROMPTS = {
@@ -90,11 +92,42 @@ Based on the roleplay conversation, provide a brief, encouraging feedback summar
 Keep it to 3 short bullet points ending with an inspiring one-liner.
 """
 
-# Smart, dynamic fallback generator for Mock Mode / Keyless operations
+# Smart, highly empathetic NLP Intent Processor for Mock Mode / Keyless operations
 def _generate_dynamic_mock_response(user_input: str, history_len: int) -> str:
     lower = user_input.lower().strip()
 
-    # Greetings
+    # 1. Depression / Sadness / Feeling Low Intent
+    if re.search(r"\b(depress|depressed|depression|udass|udas|dukh|pareshan|sad|feeling low|hopeless|down|kya kru|kya karu)\b", lower):
+        return random.choice([
+            "I'm so sorry you're feeling this way. 💛 It's completely valid to feel low sometimes. I'm right here to listen — do you want to talk about what's been weighing on your mind, or just take things slow?",
+            "Sunke dukh hua ki aap aisa feel kar rahe ho. 💛 It's okay to have tough days. Aap chahe toh mujhse baate share kar sakte ho, yaha koi pressure nahi hai.",
+            "I hear you. Feeling depressed or overwhelmed is really heavy. Remember you don't have to carry it all at once. What's been making you feel this way lately?"
+        ])
+
+    # 2. Casual Banter / Teasing / "tu pagal h kya" Intent
+    if re.search(r"\b(pagal|pagal h|crazy|stupid|kya bol rha|kya bol raha|dumb|madv)\b", lower):
+        return random.choice([
+            "Arre nahi, mai pagal nahi hu! 😄 Mai toh bas aapki baat sunne aur practice me help karne ke liye yaha hu. Aap batao, kya chal raha hai?",
+            "Haha, nahi nahi! 😄 Just trying my best to support you. Batao, aaj kaisa raha din?",
+            "Arre aisa mat bolo! 😄 I'm just your friend Sara. What's on your mind today?"
+        ])
+
+    # 3. Gratitude / Thanks Intent
+    if re.search(r"\b(thank|thanks|thank u|thankyou|shukriya|dhanyawad|thx)\b", lower):
+        return random.choice([
+            "You're so welcome! 💛 Always here for you whenever you want to talk or practice.",
+            "Arre koi baat nahi! 💛 I'm really glad I could help. Anytime you need to chat, I'm right here.",
+            "Anytime! 🌟 Keep taking small steps, you're doing great."
+        ])
+
+    # 4. Stammering / Speech Difficulty Intent
+    if re.search(r"\b(stammer|stutter|haklata|atakt|speech|speaking issue|hesitat)\b", lower):
+        return random.choice([
+            "Take all the time you need! 💛 Here on SAATHI, pauses and stammers are 100% natural. There is zero rush. What would you like to practice today?",
+            "Aap bilkul bina kisi darr ke baat kar sakte ho. Yaha koi interrupt nahi karega. Breathe comfortably and share whatever is on your mind."
+        ])
+
+    # 5. Greetings
     if re.search(r"\b(hi|hii|hello|hey|heyy|greetings|good morning|good evening)\b", lower):
         return random.choice([
             "Hii! 😊 I'm Sara. How are you doing today?",
@@ -102,41 +135,41 @@ def _generate_dynamic_mock_response(user_input: str, history_len: int) -> str:
             "Hello! I'm Sara, your practice partner. What's on your mind today?"
         ])
 
-    # "How are you" / "What's up"
-    if re.search(r"\b(how are you|how r u|what's up|whats up|how do you do|how are u)\b", lower):
+    # 6. "How are you" / "Kesa h tu" / "What's up"
+    if re.search(r"\b(how are you|how r u|what's up|whats up|tu kesa h|kesa h tu|kaise ho|kya chal raha|kya haal)\b", lower):
         return random.choice([
-            "Not much — just here with you! What's up on your side? 😊",
+            "Mai ekdam badhiya hu! 😊 Aap batao, aap kaisa feel kar rahe ho aaj?",
             "I'm doing great, thank you for asking! Ready to practice or chat whenever you are. How are you feeling?",
-            "Doing wonderful! I love meeting here. What are you up to today?"
+            "Doing wonderful! What's up on your side today?"
         ])
 
-    # Interview / Job search
+    # 7. Interview / Job search
     if re.search(r"\b(interview|job|hiring|resume|work|career)\b", lower):
         return random.choice([
             "Interviews can feel nerve-wracking, but you're doing the best thing by practicing beforehand! Would you like to launch our Job Interview roleplay scenario?",
             "That's a big opportunity! Practice helps build muscle memory for your answers. Want to try a 3-minute mock interview together?",
         ])
 
-    # Small talk / Meeting people
+    # 8. Small talk / Meeting people
     if re.search(r"\b(meet|friend|people|talk|social|party|small talk)\b", lower):
         return random.choice([
             "Making conversation with new people gets easier the more you rehearse low-stakes intros. Want to try the 'Meeting Someone New' practice scenario?",
             "That's super relatable. Starting a simple 'Hey, how's it going?' is often all it takes. Let me know if you'd like to practice an introduction!"
         ])
 
-    # Public speaking / Presentations
+    # 9. Public speaking / Presentations
     if re.search(r"\b(speak|speech|presentation|present|stage|crowd|class)\b", lower):
         return random.choice([
             "Public speaking is all about pacing and taking calm breaths before key points. Would you like to practice a 1-minute intro with me?",
             "That sounds like a great skill to sharpen! We can practice your key points right here."
         ])
 
-    # Default conversational fallbacks (varied!)
+    # 10. Empathetic, warm fallbacks (Insensitive lines removed!)
     fallbacks = [
-        "I hear you! Taking small steps in practice makes a big difference over time. What specific conversation would you like to work on today?",
-        "That's really interesting! Tell me a bit more about that, or we can jump into a quick practice room whenever you're ready. 💛",
-        "I'm right here with you. Every time you express your thoughts here, you're building real confidence.",
-        "That makes total sense. How do you usually feel when that situation comes up in daily life?",
+        "I hear you! Taking small steps in practice makes a big difference over time. What would you like to talk about next?",
+        "I'm right here with you. 💛 Tell me a bit more about what's on your mind today.",
+        "That's really meaningful to share. Every time you express your thoughts here, you're building real confidence.",
+        "I'm listening. Take your time and share whatever feels comfortable for you.",
     ]
     return fallbacks[history_len % len(fallbacks)]
 

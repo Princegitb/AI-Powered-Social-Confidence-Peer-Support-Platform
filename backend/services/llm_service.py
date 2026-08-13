@@ -1,8 +1,8 @@
 """
 SAATHI LLM Service
 Wraps Google Gemini API for AI Companion ("Sara") and Roleplay conversations.
-Implements an authentic Indian Hinglish persona (Sara) with stammering patience,
-fast offline NLP routing, active Gemini 2.5 models, and comprehensive Indian intent matching.
+Implements few-shot prompt engineering, dynamic ChromaDB RAG retrieval, explicit
+history repetition guards, and visible exception logging.
 """
 
 import logging
@@ -11,6 +11,8 @@ import re
 import warnings
 import google.generativeai as genai
 from config import GEMINI_API_KEY
+from few_shot_examples import FEW_SHOT_EXAMPLES, ROLEPLAY_FEW_SHOT_EXAMPLES
+from services.rag_service import get_relevant_examples
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
 
@@ -21,12 +23,12 @@ if GEMINI_API_KEY:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
     except Exception as e:
-        logger.warning("Failed to configure Gemini API: %s", e)
+        logger.error("Failed to configure Gemini API key: %s", e)
 
-# Updated active Gemini models (gemini-2.5-flash is active & primary)
+# Active Gemini models list
 GEMINI_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-pro", "gemini-3.5-flash"]
 
-# Base safety & Indian persona preamble with explicit behavioral rules
+# Base safety & behavioral preamble
 SAFETY_PREAMBLE = """
 CRITICAL BEHAVIORAL & SAFETY RULES YOU MUST ALWAYS FOLLOW:
 1. NON-CLINICAL & NON-DIAGNOSTIC TONE: You are SARA, a warm, supportive Indian friend/buddy on SAATHI. NEVER diagnose any mental health or medical condition (anxiety, depression, stammering, PTSD, etc.). NEVER claim to replace therapy, doctors, or medical care.
@@ -37,8 +39,23 @@ CRITICAL BEHAVIORAL & SAFETY RULES YOU MUST ALWAYS FOLLOW:
 6. CRISIS SUPPORT: If a user expresses acute crisis or distress, respond with empathy and gently suggest reaching out to a trusted person or helpline.
 """
 
+# Static Few-Shot Baseline Section for System Prompt
+FEW_SHOT_BASELINE_SECTION = """
+EXAMPLES OF DESIRED SARA RESPONSES (Imitate this warm tone, brevity, and language mirroring):
+- User: "yrr aaj bohot sad feel ho raha hai, kuch samajh nahi aa raha"
+  Sara: "Arre yaar, sunke dukh hua. 💛 Kabhi kabhi bina wajah bhi mann bhaari ho jata hai. Tum mujhe batao, aaj kya hua, ya bas halka sa rest lena chahte ho?"
+- User: "mera ye stammer kbhi thik hoga kya?"
+  Sara: "Arey bhai, stammering koi bimari nahi hai jise 'thik' karna pade. Yeh tumhara unique speech flow hai. Jab darr aur judgement hat-ta hai, confidence apne aap badhta hai. Yaha bilkul relaxed bolo!"
+- User: "I am feeling quite overwhelmed with my workload today."
+  Sara: "I hear you. Balancing heavy workload can get overwhelming. Let's take it one task at a time — what is the main thing stressing you right now?"
+- User: "yrr log mujhe bhut gaali deteh"
+  Sara: "Arre yaar, gaali sunke toh bohot bura lagta hai. 😔 Ye toh bilkul theek nahi hai! Kisi ko koi haq nahi hai tumhe bura bolne ka. Tum batao, kya hua exactly?"
+"""
+
 COMPANION_SYSTEM_PROMPT = f"""
 {SAFETY_PREAMBLE}
+
+{FEW_SHOT_BASELINE_SECTION}
 
 You are Sara — SAATHI's AI conversation companion.
 Your role:
@@ -50,11 +67,25 @@ Your role:
 ROLEPLAY_PROMPTS = {
     "job_interview": f"""
 {SAFETY_PREAMBLE}
+
+EXAMPLES OF DESIRED ROLEPLAY TURNS:
+- User: "Hi, I am ready for the interview practice."
+  Interviewer: "Welcome! Thank you for joining us today. To start off, could you tell me a little about yourself and your background?"
+- User: "I am a CS student passionate about problem solving and building web applications."
+  Interviewer: "That sounds great! Can you describe a challenging project you worked on recently and how you handled any roadblocks?"
+
 You are playing the role of a friendly but professional JOB INTERVIEWER in a practice roleplay scenario.
 Ask realistic interview questions one at a time in English/Hinglish, acknowledge candidate answers naturally, and keep turns short (1-3 sentences).
 """,
     "meeting_new_person": f"""
 {SAFETY_PREAMBLE}
+
+EXAMPLES OF DESIRED ROLEPLAY TURNS:
+- User: "Hii, is this seat taken?"
+  Stranger: "Hey! No, go ahead and sit down. I'm Sara by the way — first time at this meetup?"
+- User: "Yeah, first time here. I was a bit nervous coming alone."
+  Stranger: "Totally get that! I felt the same way before walking in. What session are you planning to attend today?"
+
 You are playing the role of a FRIENDLY STRANGER at an event.
 Be warm, casual, and curious in Hinglish/English. Ask about interests, major, or hobbies in short natural sentences (1-2 sentences).
 """,
@@ -68,16 +99,6 @@ Ask the user to share a 1-minute thought or introduction on a topic, then give s
 You are playing the role of an APPROACHABLE PROFESSOR during office hours.
 Greet the student warmly and ask how you can help with their coursework or project.
 """,
-    "phone_call": f"""
-{SAFETY_PREAMBLE}
-You are playing the role of a HELPFUL RECEPTIONIST / ASSISTANT taking a phone call.
-Greet the caller politely and ask how you can assist them today.
-""",
-    "ordering_food": f"""
-{SAFETY_PREAMBLE}
-You are playing the role of a FRIENDLY CAFÉ SERVER / CASHIER.
-Greet the customer and ask what they'd like to order today.
-""",
 }
 
 FEEDBACK_PROMPT = f"""
@@ -89,7 +110,6 @@ Based on the roleplay conversation, provide a brief, encouraging feedback summar
 Keep it to 3 short bullet points ending with an inspiring one-liner.
 """
 
-# Fast Offline NLP Matcher for Basic Greetings & Gratitude
 def _fast_offline_nlp_check(user_input: str) -> str | None:
     lower = user_input.lower().strip()
 
@@ -103,7 +123,7 @@ def _fast_offline_nlp_check(user_input: str) -> str | None:
     if lower in ["kya haal hai", "kya hal hai", "kaisa hai", "kaise ho", "kya haal h"]:
         return random.choice([
             "Mai ekdam badhiya hu bhai! 😊 Tum batao, aaj ka din kaisa chal raha hai?",
-            "Sab badhiya bhai! Aap batao, aaj kaisa feel kar rahe ho?",
+            "Sab badhiya bro! Aap batao, aaj kaisa feel kar rahe ho?",
         ])
 
     if lower in ["thank u", "thanks", "thankyou", "shukriya", "dhanyawad", "thx"]:
@@ -116,7 +136,6 @@ def _fast_offline_nlp_check(user_input: str) -> str | None:
     return None
 
 
-# Dynamic Indian Hinglish NLP Engine (Fallback when GEMINI_API_KEY is not configured or offline)
 def _generate_dynamic_mock_response(user_input: str, history_len: int) -> str:
     lower = user_input.lower().strip()
 
@@ -124,42 +143,24 @@ def _generate_dynamic_mock_response(user_input: str, history_len: int) -> str:
     if fast_reply:
         return fast_reply
 
-    # Abuse / People being mean ("gaali", "bure h", "abuse")
     if re.search(r"\b(gaali|gaaliyan|gali|bure|bura|log bure|hurt|rude|mean|hate|abuse)\b", lower):
         return random.choice([
-            "Arre yaar, sunke bilkul achha nahi laga. 😔 Kisi ko koi haq nahi hai tumhe gaali dene ka ya bura bolne ka. Tum batao, kaun log hain aur kya hua exactly?",
+            "Arre yaar, gaali sunke toh bohot bura lagta hai. 😔 Kisi ko koi haq nahi hai tumhe gaali dene ka ya bura bolne ka. Tum batao, kaun log hain aur kya hua exactly?",
             "Bhai ye toh bilkul galat baat hai. 💛 Kisi ke gaali dene se tumhari value kam nahi hoti. Tum mere saath share karo, kya hua tha?",
         ])
 
-    # "mera stammer thik hoga?" / Stammering cure question
     if re.search(r"\b(stammer.*thik|stutter.*thik|thik hoga|cure|haklana.*thik)\b", lower):
         return random.choice([
             "Bhai, stammering koi bimari nahi hai jise 'thik' karna pade. Yeh ek natural speech pattern hai. Jaise jaise tum bina kisi darr ke relaxed practice karoge, tumhara confidence aur speech flow badhega. Mai yaha hu tere saath! 💛",
             "Bilkul bro! Jab darr aur judgement ka pressure hat-ta hai, toh speech flow apne aap natural ho jata hai. Tum yaha bilkul relaxed mood me baat karo.",
         ])
 
-    # "kya discuss kre" / "kuch nhi bacha" / feeling lost
     if re.search(r"\b(kuch nhi bacha|kuch nahi bacha|kya discuss|kya baat kare|kya bolu)\b", lower):
         return random.choice([
-            "Arre aisa mat bolo bhai. 💛 Agar abhi kuch bolne ka mann nahi hai, toh bas shaant ho kar yaha betho. Koi jaldi nahi hai. Tum abhi kaisa feel kar rahe ho?",
+            "Arre aisa mat bolo bhai. 💛 Agar abhi kuch bolne ka mann nahi hai, toh bas relaxed ho kar yaha betho. Mai bilkul nahi bhaag raha. Tum abhi kaisa feel kar rahe ho?",
             "Mai samajh raha hu bro. Jab mann bhaari hota hai toh word nahi milte. Araam se ek lamba breath lo, mai bilkul nahi bhaag raha.",
         ])
 
-    # "bhai kya h tuje" / questioning Sara
-    if re.search(r"\b(kya h tuje|kya hua|kya h tujhe|pagal|crazy)\b", lower):
-        return random.choice([
-            "Arre kuch nahi bhai! 😄 Mai toh bas tumhara dost hu Sara. Agar mera koi reply ajeeb laga toh sorry, mai toh bas tumhari madad karna chahta hu. Batao kya chal raha hai?",
-            "Haha, nahi nahi bhai! 😄 Mai toh bas tumhari baat sun raha hu. Bolo, kya chal raha hai mind me?",
-        ])
-
-    # General Emotional Support / Depression
-    if re.search(r"\b(depress|depressed|depression|udass|udas|dukh|pareshan|sad|feeling low|hopeless|down)\b", lower):
-        return random.choice([
-            "Sunke dukh hua bhai. 💛 It's completely okay to feel low sometimes. Mai yaha hu tere saath — kya cheez pareshan kar rahi hai?",
-            "Bhai tension mat le, mushkil din sabke aate hain. 💛 Aap chahe toh mujhse baate share kar sakte ho, yaha koi pressure nahi hai.",
-        ])
-
-    # Fallbacks tailored to user turn history
     fallbacks = [
         "Mai sun raha hu bhai! 💛 Araam se batao, aur kya mind me chal raha hai?",
         "Haan bro, mai bilkul samajh raha hu. 💛 Jo bhi bolna hai bina kisi darr ke bolo.",
@@ -169,7 +170,12 @@ def _generate_dynamic_mock_response(user_input: str, history_len: int) -> str:
 
 
 async def get_companion_response(messages: list[dict], is_voice_mode: bool = False) -> str:
-    """Get AI Companion response using active Gemini 2.5 Flash model or dynamic Hinglish NLP fallback."""
+    """
+    Get AI Companion response using Gemini API with:
+    1. Dynamic ChromaDB RAG retrieval of top-3 relevant few-shot examples
+    2. History-based repetition guard (last 2-3 AI responses explicitly listed)
+    3. Explicit exception logging for Gemini calls
+    """
     if not messages:
         return "Hii bhai! I'm Sara. Kaisa chal raha hai aaj ka din?" if is_voice_mode else "Hii bhai! 😊 I'm Sara. Kaisa chal raha hai aaj ka din?"
 
@@ -181,7 +187,22 @@ async def get_companion_response(messages: list[dict], is_voice_mode: bool = Fal
             fast_reply = re.sub(r'[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]', '', fast_reply).strip()
         return fast_reply
 
-    system_prompt = COMPANION_SYSTEM_PROMPT
+    # 1. RAG Retrieval Step: Retrieve top_k=3 relevant examples for user_input
+    retrieved_examples = get_relevant_examples(user_input, top_k=3)
+    rag_context_text = "RELEVANT RESPONSE EXAMPLES FOR THIS MESSAGE:\n"
+    for ex in retrieved_examples:
+        rag_context_text += f"- User: \"{ex['user']}\"\n  Sara: \"{ex['sara']}\"\n"
+
+    # 2. History Repetition Guard Step: Extract last 2-3 assistant responses
+    recent_ai_replies = [m["content"] for m in messages[:-1] if m.get("role") == "assistant"][-3:]
+    repetition_guard_text = ""
+    if recent_ai_replies:
+        repetition_guard_text = "\nPREVIOUS RESPONSES IN THIS CONVERSATION (DO NOT REPEAT THESE PHRASINGS):\n"
+        for reply_str in recent_ai_replies:
+            repetition_guard_text += f"- \"{reply_str}\"\n"
+        repetition_guard_text += "CRITICAL: Vary your wording completely and do not reuse any of the above phrases!\n"
+
+    system_prompt = f"{COMPANION_SYSTEM_PROMPT}\n\n{rag_context_text}\n{repetition_guard_text}"
     if is_voice_mode:
         system_prompt += "\n\nVOICE MODE ACTIVE: Do NOT include any emojis, pictographs, symbols, markdown formatting, or bullet points in your response text. Output plain conversational spoken words only."
 
@@ -205,8 +226,10 @@ async def get_companion_response(messages: list[dict], is_voice_mode: bool = Fal
                         text = re.sub(r'[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]', '', text).strip()
                     return text
             except Exception as e:
-                logger.warning("Gemini companion model %s failed: %s", model_name, e)
+                # Step 1: Visible exception logging showing exact failure reason
+                logger.error("Gemini model '%s' call failed: %s", model_name, e, exc_info=True)
 
+    logger.warning("All Gemini models failed or no API key. Using dynamic mock response engine.")
     fallback_text = _generate_dynamic_mock_response(user_input, len(messages))
     if is_voice_mode:
         fallback_text = re.sub(r'[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]', '', fallback_text).strip()
@@ -236,7 +259,7 @@ async def get_roleplay_response(scenario: str, messages: list[dict]) -> str:
                 if response.text and len(response.text.strip()) > 0:
                     return response.text.strip()
             except Exception as e:
-                logger.warning("Gemini roleplay model %s failed: %s", model_name, e)
+                logger.error("Gemini roleplay model '%s' call failed: %s", model_name, e, exc_info=True)
 
     return _generate_dynamic_roleplay_mock(scenario, user_input, user_turns)
 
@@ -285,7 +308,7 @@ async def get_roleplay_feedback(scenario: str, messages: list[dict]) -> str:
                 if response.text and len(response.text.strip()) > 0:
                     return response.text.strip()
             except Exception as e:
-                logger.warning("Gemini feedback model %s failed: %s", model_name, e)
+                logger.error("Gemini feedback model '%s' call failed: %s", model_name, e, exc_info=True)
 
     return (
         "**Great practice session bhai!** 🎉\n\n"

@@ -335,37 +335,34 @@ export default function AICompanion() {
 
         {/* Input Bar */}
         <div className="pt-3 border-t border-border-subtle">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 bg-white rounded-2xl shadow-card border border-border-subtle px-4 py-3 flex items-center gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Talk to Sara (Hinglish ya English me bolo)..."
-                className="flex-1 bg-transparent text-[14.5px] text-text-primary placeholder-text-tertiary outline-none"
-              />
-              <button
-                onClick={startVoiceCall}
-                className="p-2 rounded-xl text-text-tertiary hover:bg-surface-soft hover:text-primary transition-colors"
-                title="Start Voice Call"
-              >
-                <Mic size={18} />
-              </button>
-            </div>
-
+          <div className="bg-white rounded-full p-2 pl-5 shadow-card border border-border-subtle hover:border-primary/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all flex items-center gap-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Talk to Sara (Hinglish ya English me bolo)..."
+              className="flex-1 bg-transparent text-[14.5px] text-text-primary placeholder-text-tertiary outline-none border-none py-1"
+            />
+            <button
+              onClick={startVoiceCall}
+              className="p-2.5 rounded-full text-text-tertiary hover:bg-surface-soft hover:text-primary transition-colors cursor-pointer shrink-0"
+              title="Start Voice Call"
+            >
+              <Mic size={19} />
+            </button>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleSend}
               disabled={!input.trim() || companionLoading}
-              className="w-12 h-12 rounded-2xl bg-primary text-white flex items-center justify-center hover:bg-primary-dark transition-colors disabled:opacity-50 cursor-pointer shrink-0 shadow-card"
+              className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark transition-all disabled:opacity-40 cursor-pointer shrink-0 shadow-sm"
             >
-              <Send size={18} />
+              <Send size={16} />
             </motion.button>
           </div>
 
-          <div className="flex items-center justify-between mt-3 text-[12px] text-text-tertiary px-1">
+          <div className="flex items-center justify-between mt-3 text-[12px] text-text-tertiary px-2">
             <span>Text and voice stay in one conversation</span>
             <label className="flex items-center gap-1.5 cursor-pointer hover:text-text-primary">
               <input

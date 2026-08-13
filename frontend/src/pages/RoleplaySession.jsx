@@ -277,26 +277,24 @@ export default function RoleplaySession() {
 
           <DisclaimerStrip variant="chat" />
           
-          <div className="flex items-end gap-3 pt-1">
-            <div className="flex-1 bg-white rounded-2xl shadow-card px-4 py-3 border border-border-subtle">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your response in Hinglish or English..."
-                rows={1}
-                className="w-full bg-transparent text-[14.5px] text-text-primary placeholder-text-tertiary outline-none resize-none max-h-[120px]"
-              />
-            </div>
+          <div className="bg-white rounded-full p-2 pl-5 shadow-card border border-border-subtle hover:border-primary/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all flex items-center gap-3 mt-1">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your response in Hinglish or English..."
+              className="flex-1 bg-transparent text-[14.5px] text-text-primary placeholder-text-tertiary outline-none border-none py-1"
+            />
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => handleSend()}
               disabled={!input.trim() || roleplayLoading}
               aria-label="Send response"
-              className="w-12 h-12 rounded-2xl bg-primary text-white flex items-center justify-center hover:bg-primary-dark transition-colors disabled:opacity-50 cursor-pointer shrink-0 shadow-card"
+              className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark transition-all disabled:opacity-40 cursor-pointer shrink-0 shadow-sm"
             >
-              <Send size={18} />
+              <Send size={16} />
             </motion.button>
           </div>
         </div>

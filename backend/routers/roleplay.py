@@ -148,13 +148,14 @@ async def roleplay_message(
                 redacted=redacted,
             )
 
-        return RoleplayResponse(
-            reply="Let's keep our practice focused and positive. Shall we continue with the scenario?",
-            safety=safety_result,
-            turn_count=len(messages),
-            should_end=False,
-            redacted=redacted,
-        )
+        if safety_result.get("action") == "block":
+            return RoleplayResponse(
+                reply="Let's keep our practice focused and positive. Shall we continue with the scenario?",
+                safety=safety_result,
+                turn_count=len(messages),
+                should_end=False,
+                redacted=redacted,
+            )
 
     # Count USER turns only (this is the threshold the UX cares about)
     user_turns = sum(1 for m in messages if m["role"] == "user")

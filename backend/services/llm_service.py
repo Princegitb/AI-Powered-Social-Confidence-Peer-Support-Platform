@@ -2,7 +2,7 @@
 SAATHI LLM Service
 Wraps Google Gemini API for AI Companion ("Sara") and Roleplay conversations.
 Implements an authentic Indian Hinglish persona (Sara) with stammering patience,
-fast offline NLP routing, and comprehensive Indian intent matching.
+fast offline NLP routing, active Gemini 2.5 models, and comprehensive Indian intent matching.
 """
 
 import logging
@@ -23,7 +23,8 @@ if GEMINI_API_KEY:
     except Exception as e:
         logger.warning("Failed to configure Gemini API: %s", e)
 
-GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+# Updated active Gemini models (gemini-2.5-flash is active & primary)
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-pro", "gemini-3.5-flash"]
 
 # Base safety & Indian persona preamble with explicit behavioral rules
 SAFETY_PREAMBLE = """
@@ -99,6 +100,12 @@ def _fast_offline_nlp_check(user_input: str) -> str | None:
             "Hello bhai! Ready to chat or practice whenever you are!"
         ])
 
+    if lower in ["kya haal hai", "kya hal hai", "kaisa hai", "kaise ho", "kya haal h"]:
+        return random.choice([
+            "Mai ekdam badhiya hu bhai! 😊 Tum batao, aaj ka din kaisa chal raha hai?",
+            "Sab badhiya bhai! Aap batao, aaj kaisa feel kar rahe ho?",
+        ])
+
     if lower in ["thank u", "thanks", "thankyou", "shukriya", "dhanyawad", "thx"]:
         return random.choice([
             "Arre koi baat nahi bhai! 💛 Always here for you.",
@@ -109,91 +116,60 @@ def _fast_offline_nlp_check(user_input: str) -> str | None:
     return None
 
 
-# Dynamic Indian Hinglish NLP Engine (Fallback when GEMINI_API_KEY is not configured)
+# Dynamic Indian Hinglish NLP Engine (Fallback when GEMINI_API_KEY is not configured or offline)
 def _generate_dynamic_mock_response(user_input: str, history_len: int) -> str:
     lower = user_input.lower().strip()
 
-    # Fast check
     fast_reply = _fast_offline_nlp_check(user_input)
     if fast_reply:
         return fast_reply
 
-    # 1. Negative social experiences / People being mean ("bhai log bhut bure h", "sb esa kyu krte h")
-    if re.search(r"\b(bure|bura|log bure|sb esa|sab aisa|sab ese|esa kyu|aisa kyu|hurt|rude|mean|hate|koi samajhta nahi)\b", lower):
+    # Abuse / People being mean ("gaali", "bure h", "abuse")
+    if re.search(r"\b(gaali|gaaliyan|gali|bure|bura|log bure|hurt|rude|mean|hate|abuse)\b", lower):
         return random.choice([
-            "Arre bhai, tension mat lo. 💛 Kabhi kabhi log unexpected behave karte hain, par isme tumhari koi galti nahi hai. Mai hu na tere saath, bolo kya hua?",
-            "Sahi baat hai bhai, kuch log faltu me hurt kar dete hain. 💛 Par tum yaha bina kisi darr ke bol sakte ho. Mai bilkul judge nahi karunga.",
-            "Bhai, sabka behavior humare control me nahi hota, par tum apne aap pe bharosa rakho. Mujhse share karo, kya hua aaj?"
+            "Arre yaar, sunke bilkul achha nahi laga. 😔 Kisi ko koi haq nahi hai tumhe gaali dene ka ya bura bolne ka. Tum batao, kaun log hain aur kya hua exactly?",
+            "Bhai ye toh bilkul galat baat hai. 💛 Kisi ke gaali dene se tumhari value kam nahi hoti. Tum mere saath share karo, kya hua tha?",
         ])
 
-    # 2. Depression / Emotional Support ("depressed hu", "sad", "dukh")
-    if re.search(r"\b(depress|depressed|depression|udass|udas|dukh|pareshan|sad|feeling low|hopeless|down|kya kru|kya karu)\b", lower):
+    # "mera stammer thik hoga?" / Stammering cure question
+    if re.search(r"\b(stammer.*thik|stutter.*thik|thik hoga|cure|haklana.*thik)\b", lower):
+        return random.choice([
+            "Bhai, stammering koi bimari nahi hai jise 'thik' karna pade. Yeh ek natural speech pattern hai. Jaise jaise tum bina kisi darr ke relaxed practice karoge, tumhara confidence aur speech flow badhega. Mai yaha hu tere saath! 💛",
+            "Bilkul bro! Jab darr aur judgement ka pressure hat-ta hai, toh speech flow apne aap natural ho jata hai. Tum yaha bilkul relaxed mood me baat karo.",
+        ])
+
+    # "kya discuss kre" / "kuch nhi bacha" / feeling lost
+    if re.search(r"\b(kuch nhi bacha|kuch nahi bacha|kya discuss|kya baat kare|kya bolu)\b", lower):
+        return random.choice([
+            "Arre aisa mat bolo bhai. 💛 Agar abhi kuch bolne ka mann nahi hai, toh bas shaant ho kar yaha betho. Koi jaldi nahi hai. Tum abhi kaisa feel kar rahe ho?",
+            "Mai samajh raha hu bro. Jab mann bhaari hota hai toh word nahi milte. Araam se ek lamba breath lo, mai bilkul nahi bhaag raha.",
+        ])
+
+    # "bhai kya h tuje" / questioning Sara
+    if re.search(r"\b(kya h tuje|kya hua|kya h tujhe|pagal|crazy)\b", lower):
+        return random.choice([
+            "Arre kuch nahi bhai! 😄 Mai toh bas tumhara dost hu Sara. Agar mera koi reply ajeeb laga toh sorry, mai toh bas tumhari madad karna chahta hu. Batao kya chal raha hai?",
+            "Haha, nahi nahi bhai! 😄 Mai toh bas tumhari baat sun raha hu. Bolo, kya chal raha hai mind me?",
+        ])
+
+    # General Emotional Support / Depression
+    if re.search(r"\b(depress|depressed|depression|udass|udas|dukh|pareshan|sad|feeling low|hopeless|down)\b", lower):
         return random.choice([
             "Sunke dukh hua bhai. 💛 It's completely okay to feel low sometimes. Mai yaha hu tere saath — kya cheez pareshan kar rahi hai?",
             "Bhai tension mat le, mushkil din sabke aate hain. 💛 Aap chahe toh mujhse baate share kar sakte ho, yaha koi pressure nahi hai.",
-            "I hear you bro. Feel low hona natural hai. Araam se batao, kya chal raha hai mind me?"
         ])
 
-    # 3. Practice Introductions / Meet Someone New ("introduce myself", "meeting someone new", "intro")
-    if re.search(r"\b(introduce|introduction|meet someone new|intro practice)\b", lower):
-        return random.choice([
-            "Haan bilkul bhai! Chalo introduction practice start karte hain. Imagine hum ek event me mile. Aap bolo: 'Hii, mera naam...' — aage aap continue karo, mai sun raha hu!",
-            "Awesome! Intro practice karte hain. Pehle apna naam aur aap kya karte ho batao, ready when you are bro!"
-        ])
-
-    # 4. Talk about my day / Reflection ("talk about my day", "reflect")
-    if re.search(r"\b(talk about my day|reflect|aaj ka din|my day)\b", lower):
-        return random.choice([
-            "Bilkul bro! Batao aaj ka din kaisa raha? Koi achhi ya ajeeb baat hui aaj?",
-            "Haan bhai! Aaj din me sabse achhi baat kya hui? Share karo mere saath."
-        ])
-
-    # 5. Practice speaking / Build confidence
-    if re.search(r"\b(practice speaking|build my confidence|speaking practice|confidence)\b", lower):
-        return random.choice([
-            "Zaroor bhai! Speech practice ke liye ek simple topic choose karte hain. Batao aapka favorite hobby kya hai aur aapko wo kyu pasand hai?",
-            "Haan bro! Pehle ek lamba breath lo. Zero rush hai. Bolo, aaj aap mujhse kis topic pe baat karna chahte ho?"
-        ])
-
-    # 6. Interview Practice
-    if re.search(r"\b(interview|job|hiring|resume|career)\b", lower):
-        return random.choice([
-            "Awesome bhai! Chalo Job Interview practice start karte hain. Question 1: 'Tell me about yourself and your background.' Aap try karo, take your time!",
-            "Interviews can feel nerve-wracking, par practice se confidence banega. Ready to try Question 1 bro?"
-        ])
-
-    # 7. Casual Banter / "tu pagal h kya"
-    if re.search(r"\b(pagal|crazy|stupid|kya bol rha|kya bol raha|dumb)\b", lower):
-        return random.choice([
-            "Arre nahi bhai, mai pagal nahi hu! 😄 Mai toh bas aapka dost hu. Aap batao, kya chal raha hai?",
-            "Haha, nahi nahi bhai! 😄 Mai toh bas aapko support kar raha hu. Batao aaj kya chal raha hai?",
-        ])
-
-    # 8. Stammering / Speech Difficulty
-    if re.search(r"\b(stammer|stutter|haklata|atakt|speech|speaking issue|hesitat)\b", lower):
-        return random.choice([
-            "Take all the time you need bhai! 💛 Here on SAATHI, pauses and stammers are 100% natural. Zero rush hai.",
-            "Bina kisi darr ke baat kar sakte ho bro. Yaha koi interrupt nahi karega. Relax karke bolo.",
-        ])
-
-    # 9. Hinglish Greetings / "kesa h tu"
-    if re.search(r"\b(how are you|how r u|what's up|whats up|tu kesa h|kesa h tu|kaise ho|kya chal raha|kya haal)\b", lower):
-        return random.choice([
-            "Mai ekdam badhiya hu bhai! 😊 Aap batao, aap kaisa feel kar rahe ho aaj?",
-            "I'm doing great bro, thanks for asking! Ready to chat whenever you are. Aap batao?",
-        ])
-
-    # 10. Indian Fallbacks (Insensitive lines completely gone!)
+    # Fallbacks tailored to user turn history
     fallbacks = [
-        "Bhai mai sun raha hu tere ko! 💛 Araam se batao, aur kya mind me chal raha hai?",
+        "Mai sun raha hu bhai! 💛 Araam se batao, aur kya mind me chal raha hai?",
         "Haan bro, mai bilkul samajh raha hu. 💛 Jo bhi bolna hai bina kisi darr ke bolo.",
-        "Sahi baat hai bhai. Har ek conversation se aapka confidence badhega. Bolo, aage kya discuss karein?",
+        "Sahi baat hai bhai. Har ek practice conversation se aapka confidence badhega. Bolo, aage kya discuss karein?",
     ]
     return fallbacks[history_len % len(fallbacks)]
 
 
 async def get_companion_response(messages: list[dict], is_voice_mode: bool = False) -> str:
-    """Get AI Companion response using Gemini with Indian Hinglish instructions or dynamic Hinglish NLP fallback."""
+    """Get AI Companion response using active Gemini 2.5 Flash model or dynamic Hinglish NLP fallback."""
     if not messages:
         return "Hii bhai! I'm Sara. Kaisa chal raha hai aaj ka din?" if is_voice_mode else "Hii bhai! 😊 I'm Sara. Kaisa chal raha hai aaj ka din?"
 
@@ -238,7 +214,7 @@ async def get_companion_response(messages: list[dict], is_voice_mode: bool = Fal
 
 
 async def get_roleplay_response(scenario: str, messages: list[dict]) -> str:
-    """Get roleplay response using Gemini API or dynamic fallback."""
+    """Get roleplay response using active Gemini API or dynamic fallback."""
     user_turns = sum(1 for m in messages if m["role"] == "user")
     user_input = messages[-1]["content"] if messages else ""
 

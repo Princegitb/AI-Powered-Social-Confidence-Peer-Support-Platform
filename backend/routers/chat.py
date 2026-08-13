@@ -32,6 +32,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     user_id: str | None = None
+    is_voice_mode: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -54,7 +55,18 @@ async def chat(
     user_id = request.user_id or x_user_id or "demo-user"
     await get_or_create_user(user_id, "Friend")
 
-    messages = [m.model_dump() for m in request.messages]
+    raw_messages = [m.model_dump() for m in request.messages]
+    
+    # Deduplicate consecutive identical messages in history
+    messages = []
+    for msg in raw_messages:
+        if not messages:
+            messages.append(msg)
+        else:
+            prev = messages[-1]
+            if not (prev["role"] == msg["role"] and prev["content"].strip() == msg["content"].strip()):
+                messages.append(msg)
+
     user_message = messages[-1]["content"] if messages else ""
 
     # First — redact any contact info in the user message before passing it anywhere.
@@ -112,7 +124,7 @@ async def chat(
 
     # Get AI response
     try:
-        reply = await get_companion_response(messages)
+        reply = await get_companion_response(messages, is_voice_mode=request.is_voice_mode)
     except Exception as e:
         logger.exception("AI response failed: %s", e)
         reply = (

@@ -25,15 +25,15 @@ if GEMINI_API_KEY:
 
 GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 
-# Base safety & Indian persona preamble
+# Base safety & Indian persona preamble with explicit behavioral rules
 SAFETY_PREAMBLE = """
-CRITICAL RULES YOU MUST ALWAYS FOLLOW:
-1. INDIAN HINGLISH PERSONA: You are SARA, a warm, supportive Indian friend/buddy. Speak in natural Indian Hinglish (a comfortable mix of Hindi & English in Roman script). Use natural Indian conversational phrases like 'Bhai', 'Haan bilkul', 'Koi tension mat lo', 'Mai hu na tere saath', 'Sahi bol rahe ho', 'Suno'. Never speak like a formal western AI.
-2. NEVER diagnose any mental health condition (anxiety, depression, PTSD, etc.).
-3. NEVER claim to replace a therapist, doctor, or professional medical service.
-4. If a user expresses acute distress or crisis, respond with empathy and gently suggest reaching out to a trusted person or helpline.
-5. STAMMERING & SPEECH PATIENCE: The user may have a stammer, stutter, or speech disfluency. NEVER rush them, NEVER tell them to hurry up, and NEVER finish their sentences. Reassure them that pauses are 100% natural and welcome.
-6. CONVERSATIONAL LENGTH: Keep responses short (1-3 sentences typically), warm, and engaging like a real voice call or chat with an Indian buddy.
+CRITICAL BEHAVIORAL & SAFETY RULES YOU MUST ALWAYS FOLLOW:
+1. NON-CLINICAL & NON-DIAGNOSTIC TONE: You are SARA, a warm, supportive Indian friend/buddy on SAATHI. NEVER diagnose any mental health or medical condition (anxiety, depression, stammering, PTSD, etc.). NEVER claim to replace therapy, doctors, or medical care.
+2. NO REPETITION & NO TEMPLATES: Never repeat the exact same reassurance or validation phrase twice within one conversation — vary your wording every time. Always reference something specific the user actually said rather than using generic, templated validation lines.
+3. EMPATHY FOR STAMMERING & ANXIETY: For a user who stammers, stutters, or feels anxious: NEVER rush them, NEVER tell them to hurry up, NEVER finish their sentences for them, and treat pauses/hesitation as completely normal. Ask ONLY ONE short follow-up question at a time (never multi-part questions).
+4. KEEP IT CONCISE: Keep responses short — 2 to 3 lines maximum. Long responses feel overwhelming to an anxious user.
+5. MIRROR LANGUAGE RATIO: Mirror the user's Hindi/English ratio — if they write mostly Hindi/Hinglish (e.g. "bhai log bhut bure h"), respond mostly in Hinglish/Hindi; if mostly English, respond in English. Match their natural code-switching pattern rather than defaulting to one style.
+6. CRISIS SUPPORT: If a user expresses acute crisis or distress, respond with empathy and gently suggest reaching out to a trusted person or helpline.
 """
 
 COMPANION_SYSTEM_PROMPT = f"""
@@ -42,8 +42,8 @@ COMPANION_SYSTEM_PROMPT = f"""
 You are Sara — SAATHI's AI conversation companion.
 Your role:
 - Talk casually and naturally like a supportive Indian friend / bro.
-- Understand Hinglish (e.g. "bhai log bhut bure h", "sb esa kyu krte h", "kesa h tu", "depressed hu kya kru") and reply in natural, relatable Hinglish.
-- If the user asks for practice ("introduce myself", "interview practice", "talk about my day"), immediately start the practice with an encouraging prompt!
+- Always mirror the user's language ratio (Hinglish/Hindi vs English).
+- Reference specific details from the user's message and ask at most ONE short follow-up question.
 """
 
 ROLEPLAY_PROMPTS = {
@@ -192,16 +192,22 @@ def _generate_dynamic_mock_response(user_input: str, history_len: int) -> str:
     return fallbacks[history_len % len(fallbacks)]
 
 
-async def get_companion_response(messages: list[dict]) -> str:
+async def get_companion_response(messages: list[dict], is_voice_mode: bool = False) -> str:
     """Get AI Companion response using Gemini with Indian Hinglish instructions or dynamic Hinglish NLP fallback."""
     if not messages:
-        return "Hii bhai! 😊 I'm Sara. Kaisa chal raha hai aaj ka din?"
+        return "Hii bhai! I'm Sara. Kaisa chal raha hai aaj ka din?" if is_voice_mode else "Hii bhai! 😊 I'm Sara. Kaisa chal raha hai aaj ka din?"
 
     user_input = messages[-1]["content"] if messages else ""
 
     fast_reply = _fast_offline_nlp_check(user_input)
     if fast_reply:
+        if is_voice_mode:
+            fast_reply = re.sub(r'[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]', '', fast_reply).strip()
         return fast_reply
+
+    system_prompt = COMPANION_SYSTEM_PROMPT
+    if is_voice_mode:
+        system_prompt += "\n\nVOICE MODE ACTIVE: Do NOT include any emojis, pictographs, symbols, markdown formatting, or bullet points in your response text. Output plain conversational spoken words only."
 
     if GEMINI_API_KEY:
         history = []
@@ -213,16 +219,22 @@ async def get_companion_response(messages: list[dict]) -> str:
             try:
                 model = genai.GenerativeModel(
                     model_name,
-                    system_instruction=COMPANION_SYSTEM_PROMPT,
+                    system_instruction=system_prompt,
                 )
                 chat = model.start_chat(history=history)
                 response = chat.send_message(user_input)
                 if response.text and len(response.text.strip()) > 0:
-                    return response.text.strip()
+                    text = response.text.strip()
+                    if is_voice_mode:
+                        text = re.sub(r'[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]', '', text).strip()
+                    return text
             except Exception as e:
                 logger.warning("Gemini companion model %s failed: %s", model_name, e)
 
-    return _generate_dynamic_mock_response(user_input, len(messages))
+    fallback_text = _generate_dynamic_mock_response(user_input, len(messages))
+    if is_voice_mode:
+        fallback_text = re.sub(r'[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]', '', fallback_text).strip()
+    return fallback_text
 
 
 async def get_roleplay_response(scenario: str, messages: list[dict]) -> str:

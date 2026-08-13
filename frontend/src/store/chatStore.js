@@ -34,23 +34,41 @@ const useChatStore = create((set, get) => ({
 
   // ── AI Companion actions ──────────────────────────────────────
 
-  sendCompanionMessage: async (content) => {
-    const { companionMessages } = get();
-    const userId = useUserStore.getState().ensureUserId();
+  lastCompanionSendTime: 0,
+  lastCompanionContent: '',
 
+  sendCompanionMessage: async (content, options = {}) => {
+    const { companionMessages, companionLoading, lastCompanionSendTime, lastCompanionContent } = get();
+    const now = Date.now();
+
+    // Guard 1: Abort if already loading or rapid duplicate submit (< 1.5s)
+    if (companionLoading) return;
+    if (content === lastCompanionContent && now - lastCompanionSendTime < 1500) {
+      console.warn('Duplicate message send suppressed by debounce guard');
+      return;
+    }
+
+    const userId = useUserStore.getState().ensureUserId();
     const userMsg = { role: 'user', content };
     const updatedMessages = [...companionMessages, userMsg];
+
     set({
       companionMessages: updatedMessages,
       companionLoading: true,
       companionSuggestions: [],
+      lastCompanionSendTime: now,
+      lastCompanionContent: content,
     });
 
     try {
       const res = await fetch(`/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, messages: updatedMessages }),
+        body: JSON.stringify({
+          user_id: userId,
+          messages: updatedMessages,
+          is_voice_mode: !!options.isVoiceMode,
+        }),
       });
 
       if (!res.ok) {
@@ -64,8 +82,17 @@ const useChatStore = create((set, get) => ({
       }
 
       const aiMsg = { role: 'assistant', content: data.reply };
+      
+      // Deduplicate state to ensure no back-to-back identical assistant messages
+      const currentMsgs = get().companionMessages;
+      const cleanMsgs = currentMsgs.filter((m, i) => {
+        if (i === 0) return true;
+        const prev = currentMsgs[i - 1];
+        return !(m.role === prev.role && m.content === prev.content);
+      });
+
       set({
-        companionMessages: [...updatedMessages, aiMsg],
+        companionMessages: [...cleanMsgs, aiMsg],
         companionLoading: false,
         companionSuggestions: data.suggestions || [],
         lastSafetyResult: data.safety,
@@ -75,7 +102,7 @@ const useChatStore = create((set, get) => ({
       const fallbackMsg = {
         role: 'assistant',
         content:
-          "I hear you! Taking small steps in practice makes a big difference over time. What would you like to work on today? 💛",
+          "I hear you! Taking small steps in practice makes a big difference over time. What would you like to work on today?",
       };
       set({
         companionMessages: [...updatedMessages, fallbackMsg],

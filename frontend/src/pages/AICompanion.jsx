@@ -4,6 +4,17 @@ import { Send, Mic, Volume2, VolumeX, Sparkles, Loader2, ArrowRight, PhoneOff, R
 import ChatBubble from '../components/ui/ChatBubble';
 import DisclaimerStrip from '../components/ui/DisclaimerStrip';
 import useChatStore from '../store/chatStore';
+import { synthesizeSpeech } from '../utils/speechUtils';
+
+/**
+ * AI Companion ("Sara") — Indian Hinglish Persona & Voice
+ * Features:
+ * - Auto-play TTS is OFF by default (user chooses when to hear voice)
+ * - Abstracted TTS via synthesizeSpeech (ElevenLabs Multilingual v2 with hi-IN Indian fallback)
+ * - Emoji-stripping step (stripEmojiForSpeech) applied ONLY to speech synthesis
+ * - Voice-mode requests pass is_voice_mode flag to eliminate LLM emojis entirely
+ * - Continuous 2-Way Voice Call Mode: Hands-free listening -> Auto send -> Auto TTS -> Resume listening!
+ */
 
 /**
  * AI Companion ("Sara") — Indian Hinglish Persona & Voice
@@ -71,45 +82,12 @@ export default function AICompanion() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [companionMessages, companionLoading]);
 
-  // Speech Synthesis helper with Indian Voice Preference (hi-IN / en-IN)
-  const speakText = (text, onEndCallback) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const clean = text.replace(/[*#_]/g, '');
-      const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.1; // Friendly warm pitch
-
-      // Select Indian Voice if available in browser
-      const voices = window.speechSynthesis.getVoices();
-      const indianVoice = voices.find(
-        (v) =>
-          v.lang === 'hi-IN' ||
-          v.lang === 'en-IN' ||
-          v.name.includes('India') ||
-          v.name.includes('Hindi')
-      );
-      if (indianVoice) {
-        utterance.voice = indianVoice;
-      }
-
-      if (onEndCallback) {
-        utterance.onend = onEndCallback;
-        utterance.onerror = onEndCallback;
-      }
-
-      window.speechSynthesis.speak(utterance);
-    } else if (onEndCallback) {
-      onEndCallback();
-    }
-  };
-
   // Only auto-play TTS if user explicitly checked autoPlay!
   useEffect(() => {
     if (autoPlay && !isVoiceCallActive && companionMessages.length > 0) {
       const last = companionMessages[companionMessages.length - 1];
       if (last.role === 'assistant') {
-        speakText(last.content);
+        synthesizeSpeech(last.content);
       }
     }
   }, [companionMessages, autoPlay, isVoiceCallActive]);
@@ -162,12 +140,12 @@ export default function AICompanion() {
           } catch (e) {}
 
           setVoiceCallStatus('Sara is thinking...');
-          sendCompanionMessage(currentText).then(() => {
+          sendCompanionMessage(currentText, { isVoiceMode: true }).then(() => {
             const msgs = useChatStore.getState().companionMessages;
             const lastMsg = msgs[msgs.length - 1];
             if (lastMsg && lastMsg.role === 'assistant') {
               setVoiceCallStatus('Sara is speaking...');
-              speakText(lastMsg.content, () => {
+              synthesizeSpeech(lastMsg.content, () => {
                 setLiveTranscript('');
                 finalSpeech = '';
                 setVoiceCallStatus('Sara is listening...');
@@ -331,7 +309,7 @@ export default function AICompanion() {
               <ChatBubble message={msg.content} role={msg.role} />
               {msg.role === 'assistant' && (
                 <button
-                  onClick={() => speakText(msg.content)}
+                  onClick={() => synthesizeSpeech(msg.content)}
                   className="ml-10 -mt-2 mb-2 text-[11px] text-text-tertiary hover:text-primary flex items-center gap-1 transition-colors"
                 >
                   <Volume2 size={12} />

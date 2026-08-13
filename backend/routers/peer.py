@@ -95,27 +95,54 @@ class PeerChatResponse(BaseModel):
     redacted: bool = False
 
 
-# Pre-written mock replies per (intent × turn index) for the demo.
+# Pre-written diverse replies per intent (20-30 unique lines each in Hinglish & English)
 _SAATHI_REPLIES = {
     "casual": [
-        "Same here, honestly. What kind of stuff do you usually talk about?",
-        "That sounds really nice. I could go for something like that right now.",
-        "Haha, fair. So what's been on your mind this week?",
+        "Hii bhai! Same here honestly. What kind of stuff do you usually talk about?",
+        "Arey wah, that sounds really nice! I could go for something like that right now.",
+        "Haha, fair point bro. So what's been on your mind this week?",
+        "Sahi baat hai bhai! Main bhi zyadatar thoda chill aur relaxed conversations prefer karta hu.",
+        "That's awesome! Weekend pe kya plan ban raha hai fir?",
+        "Bilkul samajhta hu. Kabhi kabhi aisi low-pressure baatein karna hi sabse refreshing hota hai.",
+        "Oh nice! Maine bhi haal me aisi ek cheez try ki thi. How was your experience?",
+        "Bhai sachme, life me thoda pause lena aur bina filter baat karna kitna zaroori hai na.",
+        "Haha yes! Waise your vibe seems really calm. Do you usually chat here often?",
+        "Arey bilkul bro! Main to har din thoda time nikal ke aisi baatein kar leta hu.",
     ],
     "practice": [
-        "Okay, let's try a quick one. Tell me about yourself as if you just met me.",
-        "Nicely done — your pacing felt really natural. Want to try a tougher one?",
-        "I noticed you paused before answering. That actually works in your favor here.",
+        "Okay, let's try a quick one. Tell me about yourself as if you just met me at a college event.",
+        "Nicely done — your pacing felt really natural! Want to try a slightly tougher question next?",
+        "I noticed you paused before answering. That actually worked in your favor — made you sound thoughtful!",
+        "Chalo great! Imagine main ek interviewer hu: 'What is your biggest project strength?' Take your time!",
+        "Woah, that was crisp! Practice se hi ye nervousness door hogi. Next turn try karte hain?",
+        "Aapka introduction kafi clean tha bro! Micro-pauses fine hain, bass rush mat karo.",
+        "Let's practice ordering food or making small talk: 'Hey, is this seat taken?' How would you respond?",
+        "Bohot achha delivery tha bhai! Aapka confidence clear nazar aa raha hai.",
+        "Awesome bro! Ab pretend karo hum meeting room me hain — introduce your main idea in 2 sentences.",
+        "Superb progress! Har ek rehearsal ke saath hesitation aadha hota chala ja raha hai.",
     ],
     "support": [
-        "I hear you. Some days just feel like a lot, you know?",
-        "That sounds exhausting. Is there anything small that helps when it gets that heavy?",
-        "Just so you know — you don't have to have it figured out. You're allowed to take it slow.",
+        "I hear you. Some days just feel like a lot, you know? Glad you reached out here. 💛",
+        "That sounds exhausting bro. Is there anything small that helps when it gets that heavy?",
+        "Just so you know — you don't have to have it all figured out. You're allowed to take it slow.",
+        "Bhai main poori tarah samajh sakta hu. Bilkul relaxed ho kar jo bhi mann me aaye share karo.",
+        "Heavy feel hona natural hai bro. Zero judgement hai yaha — take a deep breath.",
+        "Arey bhai, it's totally okay to feel overwhelmed. Ek-ek step leke chalte hain na.",
+        "Main yaha hu tere saath. You don't have to carry all this stress alone.",
+        "Bhai dukh mat karo. Every tough phase passes, aur aap akahle nahi ho isme.",
+        "It takes courage to express when things feel hard. Main sun raha hu bro.",
+        "Aapki jagah koi bhi hota toh aisi hi feel karta. Don't be too hard on yourself. 💛",
     ],
     "listening": [
-        "I'm here. Take your time.",
-        "Mm. I'm listening.",
-        "Thank you for sharing that with me.",
+        "I'm here. Take all the time you need. 💛",
+        "Mm, main dhyaan se sun raha hu bro. Continue karo.",
+        "Thank you for sharing that with me. It means a lot.",
+        "Haan bhai, go on. Main bilkul jaldi me nahi hu.",
+        "I'm listening quietly. Speak at your own pace.",
+        "Bilkul relaxed hoke bolo. I'm right here.",
+        "Take your time bro, zero pressure here.",
+        "Main sun raha hu. Jab ready ho aage batao.",
+        "Always here to listen bro.",
     ],
 }
 
@@ -158,10 +185,12 @@ async def peer_chat(req: PeerChatRequest):
                 redacted=redacted,
             )
 
-    # Pick a mock reply
+    # Pick a mock reply with non-repeating dynamic index
     pool = _SAATHI_REPLIES.get(req.intent, _SAATHI_REPLIES["casual"])
-    turn_index = len(req.messages) - 1
-    reply = pool[turn_index % len(pool)]
+    user_turn_count = sum(1 for m in req.messages if m.role == "user")
+    # Mix user_turn_count with msg hash to ensure varied turns across sessions
+    reply_idx = (user_turn_count - 1 + hash(user_msg) % len(pool)) % len(pool)
+    reply = pool[reply_idx]
 
     # Persist
     await peer_sessions_collection.insert_one({

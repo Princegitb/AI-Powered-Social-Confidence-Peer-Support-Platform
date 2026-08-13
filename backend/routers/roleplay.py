@@ -69,11 +69,21 @@ SCENARIO_OPENERS = {
         "Hey! Is this your first time at this event too? "
         "I just got here and don't really know anyone yet 😄"
     ),
+    "apj_kalam": (
+        "Greetings my young friend! It is wonderful to speak with you today. "
+        "What dream or goal are you currently working on?"
+    ),
+    "steve_jobs": (
+        "Hey there. Great ideas come from passion and extreme clarity. "
+        "What project or product idea are you practicing to present today?"
+    ),
 }
 
 SCENARIO_LABELS = {
     "job_interview": "Job Interview",
     "meeting_new_person": "Meeting a New Person",
+    "apj_kalam": "Dr. APJ Abdul Kalam Practice",
+    "steve_jobs": "Steve Jobs Rehearsal",
 }
 
 

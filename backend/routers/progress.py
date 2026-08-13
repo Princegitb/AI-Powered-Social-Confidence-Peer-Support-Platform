@@ -48,3 +48,21 @@ async def log_event(req: LogRequest):
     """Log a generic activity (e.g. challenge completion)."""
     await log_progress(req.user_id, req.kind, req.payload or {})
     return {"ok": True}
+
+
+class ConfidenceSurveyRequest(BaseModel):
+    user_id: str
+    survey_type: str  # "pre" or "post"
+    score: int  # 1-10
+    session_type: str | None = "practice"
+
+
+@router.post("/progress/confidence-survey")
+async def log_confidence_survey(req: ConfidenceSurveyRequest):
+    """Log pre/post session confidence ratings (1-10) for 30-day trajectory tracking."""
+    await log_progress(req.user_id, "confidence_survey", {
+        "survey_type": req.survey_type,
+        "score": req.score,
+        "session_type": req.session_type or "practice",
+    })
+    return {"ok": True, "score": req.score}

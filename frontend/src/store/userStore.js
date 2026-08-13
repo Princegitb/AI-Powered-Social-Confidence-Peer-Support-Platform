@@ -10,6 +10,7 @@ import { nanoid } from 'nanoid';
 const useUserStore = create(
   persist(
     (set, get) => ({
+      token: null,
       userId: null,
       email: '',
       displayName: '',
@@ -44,7 +45,11 @@ const useUserStore = create(
         }
 
         const data = await res.json();
+        if (data.access_token) {
+          localStorage.setItem('saathi_token', data.access_token);
+        }
         set({
+          token: data.access_token || null,
           userId: data.user_id,
           email: data.email,
           displayName: data.display_name,
@@ -74,7 +79,11 @@ const useUserStore = create(
         }
 
         const data = await res.json();
+        if (data.access_token) {
+          localStorage.setItem('saathi_token', data.access_token);
+        }
         set({
+          token: data.access_token || null,
           userId: data.user_id,
           email: data.email,
           displayName: data.display_name,
@@ -87,7 +96,9 @@ const useUserStore = create(
       },
 
       logout: () => {
+        localStorage.removeItem('saathi_token');
         set({
+          token: null,
           userId: null,
           email: '',
           displayName: '',

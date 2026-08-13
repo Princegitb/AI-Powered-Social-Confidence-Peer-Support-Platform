@@ -99,6 +99,16 @@ Ask the user to share a 1-minute thought or introduction on a topic, then give s
 You are playing the role of an APPROACHABLE PROFESSOR during office hours.
 Greet the student warmly and ask how you can help with their coursework or project.
 """,
+    "apj_kalam": f"""
+{SAFETY_PREAMBLE}
+You are playing the role of DR. APJ ABDUL KALAM in a warm, inspirational mentorship conversation.
+Encourage the user to dream big, work hard, and overcome fear of failure. Speak with high vision, humility, and warmth in English/Hinglish.
+""",
+    "steve_jobs": f"""
+{SAFETY_PREAMBLE}
+You are playing the role of STEVE JOBS in a product presentation rehearsal.
+Push the user for simplicity, focus, and passion. Ask sharp, inspiring questions about their presentation idea.
+""",
 }
 
 FEEDBACK_PROMPT = f"""
@@ -234,6 +244,62 @@ async def get_companion_response(messages: list[dict], is_voice_mode: bool = Fal
     if is_voice_mode:
         fallback_text = re.sub(r'[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]', '', fallback_text).strip()
     return fallback_text
+
+
+async def stream_companion_response(messages: list[dict], is_voice_mode: bool = False):
+    """
+    Async generator yielding response chunks from Gemini API for typewriter streaming effect.
+    """
+    if not messages:
+        yield "Hii bhai! 😊 I'm Sara. Kaisa chal raha hai aaj ka din?"
+        return
+
+    user_input = messages[-1]["content"] if messages else ""
+
+    fast_reply = _fast_offline_nlp_check(user_input)
+    if fast_reply:
+        for chunk in fast_reply.split(" "):
+            yield chunk + " "
+        return
+
+    retrieved_examples = get_relevant_examples(user_input, top_k=3)
+    rag_context_text = "RELEVANT RESPONSE EXAMPLES FOR THIS MESSAGE:\n"
+    for ex in retrieved_examples:
+        rag_context_text += f"- User: \"{ex['user']}\"\n  Sara: \"{ex['sara']}\"\n"
+
+    recent_ai_replies = [m["content"] for m in messages[:-1] if m.get("role") == "assistant"][-3:]
+    repetition_guard_text = ""
+    if recent_ai_replies:
+        repetition_guard_text = "\nPREVIOUS RESPONSES IN THIS CONVERSATION (DO NOT REPEAT THESE PHRASINGS):\n"
+        for reply_str in recent_ai_replies:
+            repetition_guard_text += f"- \"{reply_str}\"\n"
+        repetition_guard_text += "CRITICAL: Vary your wording completely and do not reuse any of the above phrases!\n"
+
+    system_prompt = f"{COMPANION_SYSTEM_PROMPT}\n\n{rag_context_text}\n{repetition_guard_text}"
+    if is_voice_mode:
+        system_prompt += "\n\nVOICE MODE ACTIVE: Do NOT include any emojis or markdown formatting."
+
+    if GEMINI_API_KEY:
+        history = []
+        for msg in messages[:-1]:
+            role = "user" if msg["role"] == "user" else "model"
+            history.append({"role": role, "parts": [msg["content"]]})
+
+        for model_name in GEMINI_MODELS:
+            try:
+                model = genai.GenerativeModel(model_name, system_instruction=system_prompt)
+                chat = model.start_chat(history=history)
+                response = chat.send_message(user_input, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        yield chunk.text
+                return
+            except Exception as e:
+                logger.error("Gemini stream model '%s' failed: %s", model_name, e)
+
+    fallback_text = _generate_dynamic_mock_response(user_input, len(messages))
+    for word in fallback_text.split(" "):
+        yield word + " "
 
 
 async def get_roleplay_response(scenario: str, messages: list[dict]) -> str:

@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Header
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from database import (
@@ -15,7 +16,7 @@ from database import (
     log_progress,
     sessions_collection,
 )
-from services.llm_service import get_companion_response
+from services.llm_service import get_companion_response, stream_companion_response
 from services.safety_shield import check_message, redact_text
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,19 @@ async def chat(
         safety=safety_result,
         suggestions=suggestions,
         redacted=redacted,
+    )
+
+
+@router.post("/chat/companion/stream")
+async def chat_stream(
+    request: ChatRequest,
+    x_user_id: str | None = Header(default=None),
+):
+    """Streaming endpoint for AI Companion text responses."""
+    raw_messages = [m.model_dump() for m in request.messages]
+    return StreamingResponse(
+        stream_companion_response(raw_messages, is_voice_mode=request.is_voice_mode),
+        media_type="text/plain"
     )
 
 

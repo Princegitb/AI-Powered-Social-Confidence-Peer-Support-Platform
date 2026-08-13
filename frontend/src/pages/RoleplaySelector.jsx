@@ -47,6 +47,18 @@ const SCENARIOS = [
     description: 'Find your steady voice',
   },
   {
+    id: 'apj_kalam',
+    emoji: '🚀',
+    title: 'Dr. APJ Abdul Kalam',
+    description: 'Inspirational speech & mentorship practice',
+  },
+  {
+    id: 'steve_jobs',
+    emoji: '🍏',
+    title: 'Steve Jobs Rehearsal',
+    description: 'Product presentation & pitch practice',
+  },
+  {
     id: 'ordering_food',
     emoji: '🍜',
     title: 'Ordering Food',

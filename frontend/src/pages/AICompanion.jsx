@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Mic, Volume2, VolumeX, Sparkles, Loader2, ArrowRight, PhoneOff, Radio } from 'lucide-react';
 import ChatBubble from '../components/ui/ChatBubble';
 import DisclaimerStrip from '../components/ui/DisclaimerStrip';
+import SaraAvatar from '../components/ui/SaraAvatar';
+import PrePostSurveyModal from '../components/ui/PrePostSurveyModal';
 import useChatStore from '../store/chatStore';
 import { synthesizeSpeech } from '../utils/speechUtils';
 
@@ -377,15 +379,13 @@ export default function AICompanion() {
         </div>
       </div>
 
-      {/* ── RIGHT SIDEBAR: Sara Orb & Starting Points ── */}
+      {/* ── RIGHT SIDEBAR: Sara Avatar & Starting Points ── */}
       <div className="lg:col-span-4 space-y-6">
         <div className="card text-center p-6 space-y-4 relative overflow-hidden bg-gradient-to-b from-white to-surface-soft">
-          <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-tr from-primary via-accent-lilac to-primary-light flex items-center justify-center shadow-card-hover animate-pulse">
-            <span className="text-4xl">🔮</span>
-          </div>
+          <SaraAvatar emotion={companionLoading ? 'thinking' : 'happy'} size="lg" className="mx-auto" />
 
           <div>
-            <h3 className="text-h2">Ready when you are</h3>
+            <h3 className="text-h2">Sara — AI Companion</h3>
             <p className="text-[12.5px] text-text-tertiary mt-1">
               Talk in Hinglish or English. Sara is your Indian practice partner.
             </p>

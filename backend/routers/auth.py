@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr
 
 from database import users_collection, ping_db, _MEM_USERS
-from services.auth_service import hash_password, verify_password
+from services.auth_service import hash_password, verify_password, create_access_token
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -38,6 +38,8 @@ class UserResponse(BaseModel):
     display_name: str
     goals: List[str]
     created_at: str
+    access_token: Optional[str] = None
+    token_type: str = "bearer"
 
 
 def _now_str() -> str:
@@ -91,12 +93,15 @@ async def signup(req: SignupRequest):
             await users_collection.insert_one(user_doc)
             logger.info("New user registered in DB: %s (%s)", display_name, email_clean)
 
+            token = create_access_token({"sub": user_id, "email": email_clean})
             return UserResponse(
                 user_id=user_id,
                 email=email_clean,
                 display_name=display_name,
                 goals=req.goals or ["General Confidence"],
                 created_at=user_doc["created_at"],
+                access_token=token,
+                token_type="bearer",
             )
         except HTTPException:
             raise
@@ -121,12 +126,15 @@ async def signup(req: SignupRequest):
     }
     _MEM_USERS[user_id] = mem_doc
 
+    token = create_access_token({"sub": user_id, "email": email_clean})
     return UserResponse(
         user_id=user_id,
         email=email_clean,
         display_name=display_name,
         goals=req.goals or ["General Confidence"],
         created_at=mem_doc["created_at"],
+        access_token=token,
+        token_type="bearer",
     )
 
 
@@ -143,12 +151,15 @@ async def login(req: LoginRequest):
                     detail="Invalid email or password. Please try again.",
                 )
 
+            token = create_access_token({"sub": user["user_id"], "email": user["email"]})
             return UserResponse(
                 user_id=user["user_id"],
                 email=user["email"],
                 display_name=user.get("display_name", "Friend"),
                 goals=user.get("goals", []),
                 created_at=user.get("created_at", _now_str()),
+                access_token=token,
+                token_type="bearer",
             )
         except HTTPException:
             raise
@@ -159,12 +170,15 @@ async def login(req: LoginRequest):
     for uid, u in _MEM_USERS.items():
         if u.get("email") == email_clean:
             if verify_password(req.password, u.get("password_hash", "")):
+                token = create_access_token({"sub": u["user_id"], "email": u["email"]})
                 return UserResponse(
                     user_id=u["user_id"],
                     email=u["email"],
                     display_name=u.get("display_name", "Friend"),
                     goals=u.get("goals", []),
                     created_at=u.get("created_at", _now_str()),
+                    access_token=token,
+                    token_type="bearer",
                 )
 
     raise HTTPException(

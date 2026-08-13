@@ -164,6 +164,46 @@ export default function ConfidenceGarden() {
           })}
         </div>
       </div>
+
+      {/* ── Real World Impact: Plant a Real Tree ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card p-6 bg-gradient-to-br from-emerald-50 via-white to-green-50 border-2 border-emerald-200/60 shadow-sm"
+      >
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-2xl shadow-card shrink-0">
+            🌱
+          </div>
+          <div className="space-y-1.5 flex-1">
+            <div className="flex items-center justify-between">
+              <span className="text-label text-emerald-600 font-bold uppercase tracking-wider">
+                NGO Reforestation Partnership
+              </span>
+              <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[12px] font-bold">
+                {Math.floor(total / 10)} Real Trees Planted 🌳
+              </span>
+            </div>
+            <h3 className="text-h2 text-[18px] font-bold text-text-primary">
+              Plant a Real Tree for Every 10 Practice Sessions
+            </h3>
+            <p className="text-body text-[13.5px] text-text-secondary leading-relaxed">
+              Your personal confidence growth creates real-world environmental impact! SAATHI partners with global reforestation NGOs to plant 1 real sapling for every 10 sessions you complete.
+            </p>
+            <div className="pt-2 flex items-center gap-3">
+              <div className="flex-1 h-2 rounded-full bg-emerald-200/70 overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 rounded-full transition-all"
+                  style={{ width: `${((total % 10) / 10) * 100}%` }}
+                />
+              </div>
+              <span className="text-[12px] font-bold text-emerald-700">
+                {total % 10}/10 Sessions to Next Tree
+              </span>
+            </div>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }

@@ -233,6 +233,52 @@ export default function Dashboard() {
             }}
           />
 
+          {/* ── Personalized 7-Day Practice Plan ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut', delay: 0.22 }}
+            className="card p-5 bg-gradient-to-br from-white to-surface-soft border border-border-subtle"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-label text-primary font-semibold uppercase">7-Day Practice Plan</span>
+              <span className="text-[12px] font-medium text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full">Active</span>
+            </div>
+            <h3 className="text-h2 text-[16.5px] font-bold text-text-primary mb-3">Daily 5-Min Missions</h3>
+            
+            <div className="space-y-2.5">
+              {[
+                { day: 'Day 1', mission: '3-min Warmup Chat with Sara', path: '/companion', done: true },
+                { day: 'Day 2', mission: 'Practice Job Interview Q1', path: '/practice', done: true },
+                { day: 'Day 3', mission: 'Meeting Someone New Intro', path: '/practice', done: false },
+                { day: 'Day 4', mission: 'Find Your Saathi Peer Chat', path: '/peer', done: false },
+                { day: 'Day 5', mission: 'APJ Kalam Inspiration Session', path: '/practice', done: false },
+                { day: 'Day 6', mission: 'Public Speaking Rehearsal', path: '/practice', done: false },
+                { day: 'Day 7', mission: 'Weekly Reflection & Note', path: '/journey', done: false },
+              ].map((item, idx) => (
+                <div
+                  key={item.day}
+                  onClick={() => navigate(item.path)}
+                  className={`p-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                    item.done
+                      ? 'bg-emerald-50/50 border-emerald-200/60 text-emerald-800'
+                      : idx === 2
+                      ? 'bg-white border-primary shadow-sm text-text-primary font-semibold'
+                      : 'bg-white/60 border-border-subtle/80 text-text-secondary opacity-75 hover:opacity-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 text-[13px]">
+                    <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${item.done ? 'bg-emerald-200 text-emerald-900' : 'bg-gray-100 text-text-tertiary'}`}>
+                      {item.day}
+                    </span>
+                    <span>{item.mission}</span>
+                  </div>
+                  <span className="text-[12px] font-bold">{item.done ? '✓' : '→'}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}

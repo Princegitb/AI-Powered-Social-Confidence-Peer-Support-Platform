@@ -1,15 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, MicOff, Volume2, VolumeX, Sparkles, Loader2, ArrowRight, PhoneOff, Radio } from 'lucide-react';
+import { Send, Mic, Volume2, VolumeX, Sparkles, Loader2, ArrowRight, PhoneOff, Radio } from 'lucide-react';
 import ChatBubble from '../components/ui/ChatBubble';
 import DisclaimerStrip from '../components/ui/DisclaimerStrip';
 import useChatStore from '../store/chatStore';
 
 /**
- * AI Companion ("Sara") — Matches Reference Image 2 + Continuous 2-Way Voice Call Mode
+ * AI Companion ("Sara") — Indian Hinglish Persona & Voice
  * Features:
- * - Sara Header bar with status indicator & [Chat] / [Voice] toggle
- * - Fast Offline NLP Greetings + Gemini AI Bro/Buddy Conversation Engine
+ * - Auto-play TTS is OFF by default (user chooses when to hear voice)
+ * - Indian voice synthesis selection (hi-IN / en-IN) for natural Indian tone
  * - Continuous 2-Way Voice Call Mode: Hands-free listening -> Auto send -> Auto TTS -> Resume listening!
  * - Right Sidebar: 3D Orb visual card + "Start voice with Sara" button
  * - "Try a starting point" card with 5 quick prompt starters
@@ -51,10 +51,10 @@ const STARTING_POINTS = [
 export default function AICompanion() {
   const [input, setInput] = useState('');
   const [mode, setMode] = useState('chat'); // 'chat' | 'voice'
-  const [autoPlay, setAutoPlay] = useState(true);
+  const [autoPlay, setAutoPlay] = useState(false); // DEFAULT OFF per user request!
   const [isListening, setIsListening] = useState(false);
   const [isVoiceCallActive, setIsVoiceCallActive] = useState(false);
-  const [voiceCallStatus, setVoiceCallStatus] = useState('Listening...'); // 'Listening...' | 'Thinking...' | 'Sara speaking...'
+  const [voiceCallStatus, setVoiceCallStatus] = useState('Listening...');
   const [liveTranscript, setLiveTranscript] = useState('');
 
   const messagesEndRef = useRef(null);
@@ -71,14 +71,27 @@ export default function AICompanion() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [companionMessages, companionLoading]);
 
-  // Speech Synthesis helper
+  // Speech Synthesis helper with Indian Voice Preference (hi-IN / en-IN)
   const speakText = (text, onEndCallback) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const clean = text.replace(/[*#_]/g, '');
       const utterance = new SpeechSynthesisUtterance(clean);
       utterance.rate = 1.0;
-      utterance.pitch = 1.1; // Friendly warm pitch for Sara
+      utterance.pitch = 1.1; // Friendly warm pitch
+
+      // Select Indian Voice if available in browser
+      const voices = window.speechSynthesis.getVoices();
+      const indianVoice = voices.find(
+        (v) =>
+          v.lang === 'hi-IN' ||
+          v.lang === 'en-IN' ||
+          v.name.includes('India') ||
+          v.name.includes('Hindi')
+      );
+      if (indianVoice) {
+        utterance.voice = indianVoice;
+      }
 
       if (onEndCallback) {
         utterance.onend = onEndCallback;
@@ -91,7 +104,7 @@ export default function AICompanion() {
     }
   };
 
-  // Auto-play TTS on new AI response in chat mode
+  // Only auto-play TTS if user explicitly checked autoPlay!
   useEffect(() => {
     if (autoPlay && !isVoiceCallActive && companionMessages.length > 0) {
       const last = companionMessages[companionMessages.length - 1];
@@ -117,6 +130,7 @@ export default function AICompanion() {
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
+    recognition.lang = 'hi-IN'; // Default to Indian English / Hindi recognition
 
     let silenceTimer = null;
     let finalSpeech = '';
@@ -139,25 +153,21 @@ export default function AICompanion() {
       const currentText = (finalSpeech + interim).trim();
       setLiveTranscript(currentText);
 
-      // Reset silence timer on new speech
       if (silenceTimer) clearTimeout(silenceTimer);
 
       if (currentText.length > 2) {
         silenceTimer = setTimeout(() => {
-          // Pause recognition while processing and speaking
           try {
             recognition.stop();
           } catch (e) {}
 
           setVoiceCallStatus('Sara is thinking...');
           sendCompanionMessage(currentText).then(() => {
-            // Get latest assistant response
             const msgs = useChatStore.getState().companionMessages;
             const lastMsg = msgs[msgs.length - 1];
             if (lastMsg && lastMsg.role === 'assistant') {
               setVoiceCallStatus('Sara is speaking...');
               speakText(lastMsg.content, () => {
-                // Resume listening when Sara finishes speaking out loud!
                 setLiveTranscript('');
                 finalSpeech = '';
                 setVoiceCallStatus('Sara is listening...');
@@ -167,12 +177,12 @@ export default function AICompanion() {
               });
             }
           });
-        }, 1800); // 1.8s silence pause triggers response
+        }, 1800);
       }
     };
 
     recognition.onerror = () => {
-      setVoiceCallStatus('Listening...');
+      setVoiceCallStatus('Sara is listening...');
     };
 
     recognition.onend = () => {
@@ -219,7 +229,7 @@ export default function AICompanion() {
       {/* ── LEFT & MAIN CHAT AREA (8 cols) ── */}
       <div className="lg:col-span-8 flex flex-col h-full bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-card border border-border-subtle relative overflow-hidden">
         
-        {/* Continuous 2-Way Voice Call Overlay (When Call is Active) */}
+        {/* Continuous 2-Way Voice Call Overlay */}
         <AnimatePresence>
           {isVoiceCallActive && (
             <motion.div
@@ -228,13 +238,11 @@ export default function AICompanion() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="absolute inset-0 z-40 bg-gradient-to-b from-primary-dark/95 via-primary/95 to-bg-gradient-start/95 backdrop-blur-xl flex flex-col items-center justify-between p-8 text-white"
             >
-              {/* Call Top Bar */}
               <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-[13px] font-medium">
                 <Radio size={14} className="text-success animate-pulse" />
-                <span>Live Voice Call with Sara</span>
+                <span>Live Voice Call with Sara (Indian Hinglish Voice)</span>
               </div>
 
-              {/* Call Center Visualizer */}
               <div className="text-center space-y-6 my-auto">
                 <div className="relative mx-auto w-32 h-32 flex items-center justify-center">
                   <div className="absolute inset-0 rounded-full bg-white/20 animate-ping opacity-75" />
@@ -246,12 +254,11 @@ export default function AICompanion() {
                 <div className="space-y-2">
                   <h2 className="text-[26px] font-bold font-serif">{voiceCallStatus}</h2>
                   <p className="text-[14px] text-white/80 max-w-md mx-auto min-h-[40px]">
-                    {liveTranscript ? `"${liveTranscript}"` : 'Talk freely — Sara is right here listening...'}
+                    {liveTranscript ? `"${liveTranscript}"` : 'Bina kisi darr ke baat karo bro — Sara is listening...'}
                   </p>
                 </div>
               </div>
 
-              {/* Call Controls */}
               <button
                 onClick={stopVoiceCall}
                 className="py-3.5 px-8 rounded-full bg-danger text-white font-semibold text-[14.5px] flex items-center gap-2 shadow-card hover:bg-danger/90 transition-all cursor-pointer"
@@ -275,12 +282,11 @@ export default function AICompanion() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-h2 text-[18px]">Sara</h2>
-                <span className="text-[12px] text-text-tertiary font-normal">• Your AI conversation companion</span>
+                <span className="text-[12px] text-text-tertiary font-normal">• Your AI conversation companion (Hinglish/Hindi)</span>
               </div>
             </div>
           </div>
 
-          {/* Mode Switcher [Chat] [Voice Call] */}
           <div className="flex items-center bg-surface-soft p-1 rounded-full border border-border-subtle">
             <button
               onClick={() => {
@@ -315,7 +321,7 @@ export default function AICompanion() {
               </div>
               <h3 className="text-h2">Talk to Sara</h3>
               <p className="text-body max-w-sm text-sm">
-                Sara is right here with you bro. Type a message or start a live voice call!
+                Sara is right here with you bro. Type a message in English or Hinglish!
               </p>
             </div>
           )}
@@ -329,7 +335,7 @@ export default function AICompanion() {
                   className="ml-10 -mt-2 mb-2 text-[11px] text-text-tertiary hover:text-primary flex items-center gap-1 transition-colors"
                 >
                   <Volume2 size={12} />
-                  <span>Sara response</span>
+                  <span>Listen to Sara (Suno)</span>
                 </button>
               )}
             </div>
@@ -358,7 +364,7 @@ export default function AICompanion() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Talk to Sara..."
+                placeholder="Talk to Sara (Hinglish ya English me bolo)..."
                 className="flex-1 bg-transparent text-[14.5px] text-text-primary placeholder-text-tertiary outline-none"
               />
               <button
@@ -390,7 +396,7 @@ export default function AICompanion() {
                 onChange={(e) => setAutoPlay(e.target.checked)}
                 className="accent-primary rounded"
               />
-              <span>Auto-play Sara</span>
+              <span>Auto-play Sara Voice</span>
             </label>
           </div>
         </div>
@@ -398,7 +404,6 @@ export default function AICompanion() {
 
       {/* ── RIGHT SIDEBAR: Sara Orb & Starting Points ── */}
       <div className="lg:col-span-4 space-y-6">
-        {/* Sara 3D Visual Card */}
         <div className="card text-center p-6 space-y-4 relative overflow-hidden bg-gradient-to-b from-white to-surface-soft">
           <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-tr from-primary via-accent-lilac to-primary-light flex items-center justify-center shadow-card-hover animate-pulse">
             <span className="text-4xl">🔮</span>
@@ -407,7 +412,7 @@ export default function AICompanion() {
           <div>
             <h3 className="text-h2">Ready when you are</h3>
             <p className="text-[12.5px] text-text-tertiary mt-1">
-              Talk, type, or start a voice call. Sara keeps the same thread.
+              Talk in Hinglish or English. Sara is your Indian practice partner.
             </p>
           </div>
 
@@ -422,7 +427,6 @@ export default function AICompanion() {
           </motion.button>
         </div>
 
-        {/* Try a Starting Point Card */}
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>

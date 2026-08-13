@@ -261,6 +261,7 @@ async def get_recent_activity(user_id: str, limit: int = 8) -> list[dict]:
 
 def _title_for_kind(kind: str, payload: dict) -> str:
     return {
+        "companion_message": "AI Companion — Conversation",
         "companion_session": "AI Companion — Conversation",
         "roleplay_complete": f"Roleplay — {payload.get('scenario_label', 'Practice')}",
         "peer_message": "Peer Saathi — Conversation",
@@ -271,6 +272,7 @@ def _title_for_kind(kind: str, payload: dict) -> str:
 
 def _subtitle_for_kind(kind: str) -> str:
     return {
+        "companion_message": "AI Session",
         "companion_session": "AI Session",
         "roleplay_complete": "AI Practice",
         "peer_message": "Peer Chat",
@@ -281,6 +283,7 @@ def _subtitle_for_kind(kind: str) -> str:
 
 def _href_for_kind(kind: str, payload: dict) -> str:
     return {
+        "companion_message": "/companion",
         "companion_session": "/companion",
         "roleplay_complete": f"/roleplay/{payload.get('scenario_id', 'job_interview')}",
         "peer_message": "/peer",

@@ -309,24 +309,6 @@ export default function RoleplaySession() {
         {/* Quick Response Chips & Input */}
         {!roleplayShouldEnd && (
           <div className="mt-4 pt-3 border-t border-border-subtle space-y-3 shrink-0">
-            {/* Practice Room Quick Response Chips */}
-            {meta.quickChips && meta.quickChips.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 px-1">
-                <span className="text-[11px] text-text-tertiary shrink-0 font-medium">Quick Ideas:</span>
-                {meta.quickChips.map((chip, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleSend(chip)}
-                    className="px-3.5 py-1.5 rounded-full text-[12px] bg-white hover:bg-primary-light/35 border border-border-subtle text-text-secondary hover:text-primary transition-all shrink-0 cursor-pointer shadow-sm"
-                  >
-                    {chip}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <DisclaimerStrip variant="chat" />
-            
             <div className="bg-white rounded-full p-2 pl-5 shadow-card border border-border-subtle hover:border-primary/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all flex items-center gap-3">
               <input
                 type="text"

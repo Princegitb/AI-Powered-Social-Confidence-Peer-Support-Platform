@@ -37,7 +37,7 @@ export default function ChatBubble({ message, role, animate = true, onSpeak }) {
           ${
             isUser
               ? 'bg-primary text-white rounded-[22px] rounded-br-[6px]'
-              : 'bg-[#F7F5FC]/50 text-text-primary rounded-[22px] rounded-bl-[6px] border border-border-subtle/50'
+              : 'bg-white text-text-primary rounded-[22px] rounded-bl-[6px] border border-border-subtle'
           }
         `}
       >

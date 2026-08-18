@@ -231,7 +231,8 @@ export default function RoleplaySession() {
       </div>
 
       {/* Main Conversation Container Card with set height (mockup-style) */}
-      <div className="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-card border border-border-subtle relative overflow-hidden flex flex-col h-[520px]">
+      <div className="bg-[#F6F4FA]/80 backdrop-blur-md rounded-3xl p-6 shadow-card border border-border-subtle relative overflow-hidden flex flex-col h-[520px]">
+        <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full h-full justify-between overflow-hidden">
         {/* Messages Log */}
         <div className="flex-1 overflow-y-auto py-2 space-y-4 pr-1">
           {roleplayMessages.map((msg, i) => (
@@ -355,6 +356,7 @@ export default function RoleplaySession() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

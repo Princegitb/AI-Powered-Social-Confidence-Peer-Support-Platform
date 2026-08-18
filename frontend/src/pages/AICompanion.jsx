@@ -207,7 +207,7 @@ export default function AICompanion() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[calc(100vh-100px)]">
       {/* ── LEFT & MAIN CHAT AREA (8 cols) ── */}
-      <div className="lg:col-span-8 flex flex-col h-full bg-[#F6F4FA]/80 backdrop-blur-md rounded-3xl p-6 shadow-card border border-border-subtle relative overflow-hidden">
+      <div className="lg:col-span-8 flex flex-col h-full bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-card border border-border-subtle relative overflow-hidden">
         
         {/* Continuous 2-Way Voice Call Overlay */}
         <AnimatePresence>
@@ -216,7 +216,7 @@ export default function AICompanion() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="absolute inset-0 z-40 bg-gradient-to-b from-primary-dark/95 via-primary/95 to-bg-gradient-start/95 backdrop-blur-xl flex flex-col items-center justify-between p-8 text-white rounded-3xl"
+              className="absolute inset-0 z-40 bg-gradient-to-b from-primary-dark/95 via-primary/95 to-bg-gradient-start/95 backdrop-blur-xl flex flex-col items-center justify-between p-8 text-white"
             >
               <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-[13px] font-medium">
                 <Radio size={14} className="text-success animate-pulse" />
@@ -250,117 +250,115 @@ export default function AICompanion() {
           )}
         </AnimatePresence>
 
-        <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full h-full justify-between">
-          {/* Sara Header Bar */}
-          <div className="flex items-center justify-between pb-4 border-b border-border-subtle mb-4 w-full">
-            <div className="flex items-center gap-3">
-              <SaraAvatar size="sm" emotion={companionLoading ? 'thinking' : 'happy'} />
-              <div>
-                <h2 className="font-bold text-[18px] text-text-primary leading-tight font-serif">Sara</h2>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-success inline-block animate-pulse" />
-                  <span className="text-[12px] text-text-tertiary font-normal">Your AI conversation companion</span>
-                </div>
+        {/* Sara Header Bar */}
+        <div className="flex items-center justify-between pb-4 border-b border-border-subtle mb-4">
+          <div className="flex items-center gap-3">
+            <SaraAvatar size="sm" emotion={companionLoading ? 'thinking' : 'happy'} />
+            <div>
+              <h2 className="font-bold text-[18px] text-text-primary leading-tight">Sara</h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-2 h-2 rounded-full bg-success inline-block" />
+                <span className="text-[12px] text-text-tertiary font-normal">Your AI conversation companion</span>
               </div>
-            </div>
-
-            <div className="flex items-center bg-surface-soft p-1 rounded-full border border-border-subtle">
-              <button
-                onClick={() => {
-                  if (isVoiceCallActive) stopVoiceCall();
-                  setMode('chat');
-                }}
-                className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all flex items-center gap-1.5 ${
-                  mode === 'chat' ? 'bg-white text-text-primary shadow-sm font-semibold' : 'text-text-tertiary hover:text-text-primary'
-                }`}
-              >
-                <span>💬</span> Chat
-              </button>
-              <button
-                onClick={startVoiceCall}
-                className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all flex items-center gap-1.5 ${
-                  mode === 'voice' ? 'bg-white text-text-primary shadow-sm font-semibold' : 'text-text-tertiary hover:text-text-primary'
-                }`}
-              >
-                <Mic size={13} /> Voice
-              </button>
             </div>
           </div>
 
-          <DisclaimerStrip variant="chat" />
+          <div className="flex items-center bg-surface-soft p-1 rounded-full border border-border-subtle">
+            <button
+              onClick={() => {
+                if (isVoiceCallActive) stopVoiceCall();
+                setMode('chat');
+              }}
+              className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all flex items-center gap-1.5 ${
+                mode === 'chat' ? 'bg-white text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-primary'
+              }`}
+            >
+              <span>💬</span> Chat
+            </button>
+            <button
+              onClick={startVoiceCall}
+              className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all flex items-center gap-1.5 ${
+                mode === 'voice' ? 'bg-white text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-primary'
+              }`}
+            >
+              <Mic size={13} /> Voice
+            </button>
+          </div>
+        </div>
 
-          {/* Messages area */}
-          <div className="flex-1 overflow-y-auto py-4 px-2 space-y-4 w-full">
-            {companionMessages.length === 0 && (
-              <ChatBubble 
-                message="Hey, I'm Sara. I'm here with you. How are you feeling today?" 
-                role="assistant" 
-                onSpeak={() => synthesizeSpeech("Hey, I'm Sara. I'm here with you. How are you feeling today?")}
-              />
-            )}
+        <DisclaimerStrip variant="chat" />
 
-            {companionMessages.map((msg, i) => (
-              <ChatBubble 
-                key={i} 
-                message={msg.content} 
-                role={msg.role} 
-                onSpeak={() => synthesizeSpeech(msg.content)} 
-              />
-            ))}
+        {/* Messages area */}
+        <div className="flex-1 overflow-y-auto py-4 px-2 space-y-4">
+          {companionMessages.length === 0 && (
+            <ChatBubble 
+              message="Hey, I'm Sara. I'm here with you. How are you feeling today?" 
+              role="assistant" 
+              onSpeak={() => synthesizeSpeech("Hey, I'm Sara. I'm here with you. How are you feeling today?")}
+            />
+          )}
 
-            {companionLoading && (
-              <div className="flex items-center gap-2.5 mb-3">
-                <SaraAvatar size="sm" emotion="thinking" />
-                <div className="bg-[#F7F5FC]/50 rounded-2xl px-5 py-3 shadow-sm border border-border-subtle/50">
-                  <Loader2 size={18} className="text-primary animate-spin" />
-                </div>
+          {companionMessages.map((msg, i) => (
+            <ChatBubble 
+              key={i} 
+              message={msg.content} 
+              role={msg.role} 
+              onSpeak={() => synthesizeSpeech(msg.content)} 
+            />
+          ))}
+
+          {companionLoading && (
+            <div className="flex items-center gap-2.5 mb-3">
+              <SaraAvatar size="sm" emotion="thinking" />
+              <div className="bg-[#F7F5FC]/50 rounded-2xl px-5 py-3 shadow-sm border border-border-subtle/50">
+                <Loader2 size={18} className="text-primary animate-spin" />
               </div>
-            )}
+            </div>
+          )}
 
-            <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input Bar */}
+        <div className="pt-3 border-t border-border-subtle">
+          <div className="bg-white rounded-full p-2 pl-5 shadow-card border border-border-subtle hover:border-primary/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all flex items-center gap-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Talk to Sara..."
+              className="flex-1 bg-transparent text-[14.5px] text-text-primary placeholder-text-tertiary outline-none border-none py-1"
+            />
+            <button
+              onClick={startVoiceCall}
+              className="p-2.5 rounded-full text-text-tertiary hover:bg-surface-soft hover:text-primary transition-colors cursor-pointer shrink-0"
+              title="Start Voice Call"
+            >
+              <Mic size={19} />
+            </button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleSend}
+              disabled={!input.trim() || companionLoading}
+              className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark transition-all disabled:opacity-40 cursor-pointer shrink-0 shadow-sm"
+            >
+              <ArrowUp size={16} />
+            </motion.button>
           </div>
 
-          {/* Input Bar */}
-          <div className="pt-3 border-t border-border-subtle w-full">
-            <div className="bg-white rounded-full p-2 pl-5 shadow-card border border-border-subtle hover:border-primary/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all flex items-center gap-3">
+          <div className="flex items-center justify-between mt-3 text-[12px] text-text-tertiary px-2">
+            <span>Text and voice stay in one conversation</span>
+            <label className="flex items-center gap-1.5 cursor-pointer hover:text-text-primary">
               <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Talk to Sara..."
-                className="flex-1 bg-transparent text-[14.5px] text-text-primary placeholder-text-tertiary outline-none border-none py-1"
+                type="checkbox"
+                checked={autoPlay}
+                onChange={(e) => setAutoPlay(e.target.checked)}
+                className="accent-primary rounded"
               />
-              <button
-                onClick={startVoiceCall}
-                className="p-2.5 rounded-full text-text-tertiary hover:bg-surface-soft hover:text-primary transition-colors cursor-pointer shrink-0"
-                title="Start Voice Call"
-              >
-                <Mic size={19} />
-              </button>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleSend}
-                disabled={!input.trim() || companionLoading}
-                className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark transition-all disabled:opacity-40 cursor-pointer shrink-0 shadow-sm"
-              >
-                <ArrowUp size={16} />
-              </motion.button>
-            </div>
-
-            <div className="flex items-center justify-between mt-3 text-[12px] text-text-tertiary px-2">
-              <span>Text and voice stay in one conversation</span>
-              <label className="flex items-center gap-1.5 cursor-pointer hover:text-text-primary">
-                <input
-                  type="checkbox"
-                  checked={autoPlay}
-                  onChange={(e) => setAutoPlay(e.target.checked)}
-                  className="accent-primary rounded"
-                />
-                <span>Auto-play Sara</span>
-              </label>
-            </div>
+              <span>Auto-play Sara</span>
+            </label>
           </div>
         </div>
       </div>

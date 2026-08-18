@@ -18,9 +18,9 @@ html {
 
 body {
   min-height: 100vh;
-  background: linear-gradient(180deg, #EDE9FB 0%, #D9CFF3 100%);
+  background: linear-gradient(180deg, #ECE9F6 0%, #DEDAF0 100%);
   background-attachment: fixed;
-  color: #1E1B2E;
+  color: #1D163B;
   overflow-y: auto;
 }
 
@@ -32,13 +32,13 @@ body {
 .card {
   background: #FFFFFF;
   border-radius: 20px;
-  box-shadow: 0 4px 24px rgba(139, 92, 246, 0.12);
+  box-shadow: 0 4px 24px rgba(139, 92, 246, 0.08);
   padding: 24px;
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .card:hover {
-  box-shadow: 0 8px 32px rgba(139, 92, 246, 0.18);
+  box-shadow: 0 8px 32px rgba(139, 92, 246, 0.12);
 }
 
 .card-sm {
@@ -51,11 +51,15 @@ body {
 }
 
 /* ─── Typography scale (DESIGN_SYSTEM.md Section 3) ──── */
+h1, .text-h1, .font-serif {
+  font-family: 'Playfair Display', Georgia, Cambria, "Times New Roman", Times, serif !important;
+}
+
 .text-h1 {
   font-size: 30px;
-  font-weight: 600;
-  line-height: 1.2;
-  color: #1E1B2E;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #1D163B;
 }
 
 .text-h2 {

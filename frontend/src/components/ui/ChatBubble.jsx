@@ -38,11 +38,11 @@ export default function ChatBubble({ message, role, animate = true, onSpeak }) {
 
       <div
         className={`
-          max-w-[78%] px-6 py-4.5 text-[14.5px] leading-relaxed break-words overflow-hidden shadow-sm
+          px-6 py-4.5 text-[14.5px] leading-relaxed break-words overflow-hidden shadow-sm
           ${
             isUser
-              ? 'bg-primary text-white rounded-[22px] rounded-br-[6px]'
-              : 'bg-white text-text-primary rounded-[22px] rounded-bl-[6px] border border-border-subtle'
+              ? 'max-w-[70%] bg-primary text-white rounded-[22px] rounded-br-[6px]'
+              : 'max-w-[85%] md:max-w-[55%] bg-white text-text-primary rounded-[22px] rounded-bl-[6px] border border-border-subtle'
           }
         `}
       >

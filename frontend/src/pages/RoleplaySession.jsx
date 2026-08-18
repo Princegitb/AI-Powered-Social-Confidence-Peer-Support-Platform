@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowLeft, Star, Target, Mic, ArrowUp, Volume2 } from 'lucide-react';
+import { Loader2, ArrowLeft, Star, Target, Mic, ArrowUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ChatBubble from '../components/ui/ChatBubble';
@@ -82,7 +82,10 @@ export default function RoleplaySession() {
   const navigate = useNavigate();
   const [input, setInput] = useState('');
   const [autoPlay, setAutoPlay] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  
   const messagesEndRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   const {
     roleplayMessages,
@@ -156,24 +159,62 @@ export default function RoleplaySession() {
     navigate('/practice');
   };
 
+  const toggleSpeechInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Voice transcription is not supported in this browser. Please try Chrome or Edge.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const rec = new SpeechRecognition();
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = 'hi-IN'; // Indian accent support
+
+    rec.onstart = () => setIsListening(true);
+    rec.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      setInput((prev) => (prev ? prev + ' ' + text : text));
+    };
+    rec.onend = () => setIsListening(false);
+    rec.onerror = () => setIsListening(false);
+
+    recognitionRef.current = rec;
+    rec.start();
+  };
+
   return (
-    <div className="flex flex-col min-h-[calc(100vh-100px)] pb-10">
+    <div className="max-w-4xl mx-auto w-full flex flex-col pb-12">
+      {/* Back breadcrumb */}
+      <button
+        onClick={handleBackToScenarios}
+        className="text-[12.5px] text-text-tertiary hover:text-primary flex items-center gap-1 transition-colors mb-3 cursor-pointer font-semibold self-start"
+      >
+        <ArrowLeft size={14} /> Back to scenarios
+      </button>
+
       {/* Guided Roleplay Header */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="mb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div className="space-y-1">
-          <span className="text-[11px] font-bold tracking-wider text-primary uppercase">GUIDED ROLEPLAY</span>
-          <h1 className="text-[40px] font-bold text-text-primary font-serif leading-tight">
+          <span className="text-[10px] font-bold tracking-wider text-primary uppercase">GUIDED ROLEPLAY</span>
+          <h1 className="text-[36px] font-bold text-text-primary font-serif leading-tight">
             {meta.label.replace(" Practice Room", "").replace(" Practice", "").replace(" Room", "")}
           </h1>
-          <p className="text-[14.5px] text-text-secondary">
+          <p className="text-[14px] text-text-secondary">
             Stay curious, take your time, and let the conversation unfold.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="px-4 py-2 rounded-full bg-white/70 backdrop-blur-sm border border-border-subtle shadow-sm text-[13.5px] font-semibold text-text-secondary">
+        <div className="flex items-center gap-2.5">
+          <div className="px-3.5 py-1.5 rounded-full bg-white/70 backdrop-blur-sm border border-border-subtle shadow-sm text-[13px] font-semibold text-text-secondary">
             00:00
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/70 backdrop-blur-sm border border-border-subtle text-[12.5px] font-semibold text-text-secondary">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/70 backdrop-blur-sm border border-border-subtle text-[12.5px] font-semibold text-text-secondary">
             <Target size={14} className="text-primary" />
             <span>Turn {userTurns}/6</span>
           </div>
@@ -181,26 +222,18 @@ export default function RoleplaySession() {
           {!roleplayShouldEnd && (
             <button
               onClick={handleEndSession}
-              className="flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-medium text-danger bg-danger/10 rounded-full hover:bg-danger/20 transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 text-[12.5px] font-semibold text-danger bg-danger/10 rounded-full hover:bg-danger/20 transition-colors cursor-pointer"
             >
-              End Room Session
+              End Session
             </button>
           )}
-
-          <button
-            onClick={handleBackToScenarios}
-            aria-label="Back to scenarios"
-            className="px-3.5 py-2 text-[13px] rounded-full bg-surface-soft text-text-secondary hover:text-text-primary hover:bg-primary-light/20 transition-colors flex items-center gap-1 font-medium cursor-pointer"
-          >
-            <ArrowLeft size={14} /> Back
-          </button>
         </div>
       </div>
 
-      {/* Main Conversation Container Card */}
-      <div className="flex-1 bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-card border border-border-subtle relative overflow-hidden flex flex-col min-h-[400px]">
+      {/* Main Conversation Container Card with set height (mockup-style) */}
+      <div className="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-card border border-border-subtle relative overflow-hidden flex flex-col h-[520px]">
         {/* Messages Log */}
-        <div className="flex-1 overflow-y-auto py-2 space-y-4">
+        <div className="flex-1 overflow-y-auto py-2 space-y-4 pr-1">
           {roleplayMessages.map((msg, i) => (
             <ChatBubble 
               key={i} 
@@ -275,7 +308,7 @@ export default function RoleplaySession() {
 
         {/* Quick Response Chips & Input */}
         {!roleplayShouldEnd && (
-          <div className="mt-4 pt-3 border-t border-border-subtle space-y-3">
+          <div className="mt-4 pt-3 border-t border-border-subtle space-y-3 shrink-0">
             {/* Practice Room Quick Response Chips */}
             {meta.quickChips && meta.quickChips.length > 0 && (
               <div className="flex items-center gap-2 overflow-x-auto pb-1 px-1">
@@ -303,6 +336,17 @@ export default function RoleplaySession() {
                 placeholder="Talk to Sara..."
                 className="flex-1 bg-transparent text-[14.5px] text-text-primary placeholder-text-tertiary outline-none border-none py-1"
               />
+              <button
+                onClick={toggleSpeechInput}
+                className={`p-2 rounded-full transition-colors cursor-pointer shrink-0 ${
+                  isListening 
+                    ? 'text-danger bg-danger/10 animate-pulse' 
+                    : 'text-text-tertiary hover:bg-surface-soft hover:text-primary'
+                }`}
+                title="Tap to speak"
+              >
+                <Mic size={18} />
+              </button>
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}

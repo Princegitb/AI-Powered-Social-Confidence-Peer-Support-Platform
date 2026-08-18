@@ -1,21 +1,21 @@
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Volume2 } from 'lucide-react';
 
 /**
- * ChatBubble — DESIGN_SYSTEM.md Section 7.2
- * User bubble: filled primary purple, white text, right-aligned.
- * AI bubble: white card, text-primary, left-aligned.
- *
- * Rendering uses ReactMarkdown (safer than dangerouslySetInnerHTML + regex),
- * so LLM output cannot inject HTML/script.
+ * ChatBubble — Redesigned according to new SARA UI reference.
+ * User bubble: solid primary purple, white text, right-aligned.
+ * AI bubble: clean white card, text-primary, left-aligned, with SARA headers and speaker action inside.
+ * Peer/Other bubble: simple markdown card without SARA headers.
  *
  * Props:
  *   message  — text content
  *   role     — "user" | "assistant"
  *   animate  — whether to animate entry (default: true)
+ *   onSpeak  — optional callback to trigger text-to-speech (only for Sara AI)
  */
-export default function ChatBubble({ message, role, animate = true }) {
+export default function ChatBubble({ message, role, animate = true, onSpeak }) {
   const isUser = role === 'user';
 
   const motionProps = animate
@@ -29,29 +29,39 @@ export default function ChatBubble({ message, role, animate = true }) {
   return (
     <motion.div
       {...motionProps}
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}
+      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}
     >
-      {/* AI avatar */}
-      {!isUser && (
-        <div className="w-8 h-8 rounded-full bg-primary-light flex items-center justify-center mr-2.5 mt-1 shrink-0">
-          <span className="text-[13px] font-bold text-primary-dark">S</span>
-        </div>
-      )}
-
       <div
         className={`
-          max-w-[78%] px-5 py-3.5 text-[14.5px] leading-relaxed break-words overflow-hidden
+          max-w-[78%] px-6 py-4.5 text-[14.5px] leading-relaxed break-words overflow-hidden shadow-sm
           ${
             isUser
-              ? 'bg-primary text-white rounded-[22px] rounded-br-[6px] shadow-sm'
-              : 'bg-white text-text-primary rounded-[22px] rounded-bl-[6px] shadow-card border border-border-subtle/50'
+              ? 'bg-primary text-white rounded-[22px] rounded-br-[6px]'
+              : 'bg-[#F7F5FC]/50 text-text-primary rounded-[22px] rounded-bl-[6px] border border-border-subtle/50'
           }
         `}
       >
         {isUser ? (
           <p className="whitespace-pre-wrap">{message}</p>
+        ) : onSpeak ? (
+          <div className="flex flex-col w-full">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1">
+              SARA
+            </span>
+            <button
+              onClick={onSpeak}
+              className="flex items-center gap-1.5 text-[11.5px] text-text-tertiary hover:text-primary transition-colors mb-2.5 self-start"
+              title="Listen to Sara response"
+            >
+              <Volume2 size={13} className="text-text-tertiary" />
+              <span>Sara response</span>
+            </button>
+            <div className="markdown-body whitespace-pre-wrap text-text-primary">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message}</ReactMarkdown>
+            </div>
+          </div>
         ) : (
-          <div className="markdown-body whitespace-pre-wrap">
+          <div className="markdown-body whitespace-pre-wrap text-text-primary">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message}</ReactMarkdown>
           </div>
         )}

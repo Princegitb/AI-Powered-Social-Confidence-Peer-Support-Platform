@@ -27,3 +27,8 @@ coverage.xml
 # System Files
 .DS_Store
 Thumbs.db
+
+# Databases & Chroma Indexes
+*.sqlite3
+backend/chroma_db/
+

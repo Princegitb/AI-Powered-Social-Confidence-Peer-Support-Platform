@@ -30,16 +30,16 @@ export default function PillNav() {
   return (
     <>
       {/* Desktop / tablet horizontal pill bar */}
-      <nav className="hidden lg:flex items-center gap-1.5 bg-white/70 backdrop-blur-md p-1.5 rounded-full border border-border-subtle shadow-card">
+      <nav className="hidden lg:flex items-center gap-1 bg-[#F7F5FC]/50 backdrop-blur-md p-1 rounded-full border border-border-subtle shadow-sm">
         {NAV_ITEMS.map(({ to, label }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `px-4 py-1.5 rounded-full text-[13.5px] font-medium transition-all duration-200 ${
+              `px-4.5 py-1.5 rounded-full text-[13px] font-medium transition-all duration-200 ${
                 isActive
-                  ? 'bg-primary text-white shadow-card font-semibold'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-soft'
+                  ? 'bg-white text-text-primary shadow-sm font-semibold'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-white/40'
               }`
             }
           >

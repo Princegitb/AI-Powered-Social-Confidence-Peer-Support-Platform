@@ -14,13 +14,13 @@ services:
       - key: FRONTEND_URL
         value: https://saathi-frontend.onrender.com  # URL of the frontend static site
 
-staticSites:
   # Frontend Static Site
-  - name: saathi-frontend
-    env: static
+  - type: web
+    name: saathi-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
-    publishPath: dist
+    staticPublishPath: dist
     routes:
       # Proxy all API requests to the FastAPI backend service
       - type: rewrite

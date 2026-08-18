@@ -41,8 +41,8 @@ export default function ChatBubble({ message, role, animate = true, onSpeak }) {
           max-w-[78%] px-6 py-4.5 text-[14.5px] leading-relaxed break-words overflow-hidden shadow-sm
           ${
             isUser
-              ? 'bg-primary text-white rounded-[22px] rounded-br-[6px]'
-              : 'bg-white text-text-primary rounded-[22px] rounded-bl-[6px] border border-border-subtle'
+              ? 'bg-[#7654D9] text-white rounded-[22px] rounded-br-[6px]'
+              : 'bg-white text-text-primary rounded-[22px] rounded-bl-[6px] border border-[#E9E5F3]'
           }
         `}
       >

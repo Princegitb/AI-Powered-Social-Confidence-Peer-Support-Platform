@@ -14,9 +14,9 @@ services:
       - key: FRONTEND_URL
         value: https://saathi-frontend.onrender.com  # URL of the frontend static site
 
+staticSites:
   # Frontend Static Site
-  - type: static
-    name: saathi-frontend
+  - name: saathi-frontend
     env: static
     rootDir: frontend
     buildCommand: npm install && npm run build

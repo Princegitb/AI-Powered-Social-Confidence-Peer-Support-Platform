@@ -163,3 +163,9 @@ button,
 [role='button'] {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ─── Disable raw input focus outlines (blue outline boxes) ── */
+input:focus, input:focus-visible, textarea:focus, textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}

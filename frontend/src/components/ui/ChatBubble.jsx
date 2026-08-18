@@ -29,8 +29,13 @@ export default function ChatBubble({ message, role, animate = true, onSpeak }) {
   return (
     <motion.div
       {...motionProps}
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}
+      className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-5`}
     >
+      {/* Outer Name Label */}
+      <span className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1 px-1.5 select-none">
+        {isUser ? 'YOU' : 'SARA'}
+      </span>
+
       <div
         className={`
           max-w-[78%] px-6 py-4.5 text-[14.5px] leading-relaxed break-words overflow-hidden shadow-sm
@@ -45,12 +50,9 @@ export default function ChatBubble({ message, role, animate = true, onSpeak }) {
           <p className="whitespace-pre-wrap">{message}</p>
         ) : onSpeak ? (
           <div className="flex flex-col w-full">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1">
-              SARA
-            </span>
             <button
               onClick={onSpeak}
-              className="flex items-center gap-1.5 text-[11.5px] text-text-tertiary hover:text-primary transition-colors mb-2.5 self-start"
+              className="flex items-center gap-1.5 text-[11.5px] text-text-tertiary hover:text-primary transition-colors mb-2 self-start"
               title="Listen to Sara response"
             >
               <Volume2 size={13} className="text-text-tertiary" />
